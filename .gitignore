@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+.idea/
+local.properties
+build/
+**/build/
+.superpowers/
+.worktrees/
+
+# release signing — never commit the key or its passwords
+keystore.properties
+*.jks
+*.keystore

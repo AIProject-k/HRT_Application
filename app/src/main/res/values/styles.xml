@@ -1,0 +1,10 @@
+<resources>
+    <!-- android:Theme.Material (no ".Light") is already the dark platform theme;
+         we only override the window/system-bar colors to match the app background. -->
+    <style name="Theme.HormoneLog" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:statusBarColor">@color/app_background</item>
+        <item name="android:navigationBarColor">@color/app_nav_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
