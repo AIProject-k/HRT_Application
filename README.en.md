@@ -77,3 +77,7 @@ This project was **built with Anthropic Claude** — design, implementation, lit
 research, model parameter calibration, unit tests, on-device verification (Galaxy S23),
 and release were all done in conversational sessions with the coding agent **Claude Code**
 (model **Claude Sonnet 5**). Commits are tagged `Co-Authored-By: Claude Sonnet 5`.
+
+## Status
+
+Currently **in real-world testing**.

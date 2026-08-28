@@ -75,3 +75,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 이 프로젝트는 **Anthropic Claude로 구축했습니다** — 코딩 에이전트 **Claude Code**(모델 **Claude Sonnet 5**)와의
 대화형 세션으로 설계·구현·문헌 조사·모델 파라미터 보정·단위 테스트·실기기(Galaxy S23) 검증·릴리즈까지 진행했습니다.
 커밋에는 `Co-Authored-By: Claude Sonnet 5` 가 표기되어 있습니다.
+
+## 상태
+
+현재 **실사용 테스트 중**입니다.
