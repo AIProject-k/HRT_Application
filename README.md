@@ -1,5 +1,7 @@
 # 호르몬로그 (HormoneLog)
 
+*한국어 · [English](README.en.md)*
+
 > HRT(호르몬 대체요법) 기록 안드로이드 앱 · 로컬 전용 · 서버 없음 · 계정 불필요
 > An offline Android app for logging hormone replacement therapy.
 
