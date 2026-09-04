@@ -4,12 +4,35 @@
 
 > An offline Android app for logging hormone replacement therapy (HRT) · local-only · no server · no account
 
+## What it is
+
+On HRT you dose every day or every week, but you get a blood test maybe once every few
+months. So **between tests there is no way to know where your levels actually are** —
+whether you are just past a peak or scraping the trough before the next injection.
+
+HormoneLog fills that gap. Log your doses and it draws a **projected curve** from
+pharmacokinetic models in the published literature; log a real lab value and it
+**calibrates that curve to your own body**. The more lab values you add, the more
+personalised the curve becomes.
+
+- **Everything stays on the device** — no uploads, no account, no network calls
+- **Only draws what it can source** — a route gets a curve only when every parameter has provenance; the rest stay `Model unavailable`
+- **Never blends estimates with measurements** — the graph always distinguishes them
+
 **⚠️ Reference tool only.** The projected curves are *population approximations* derived
 from public literature, not clinically validated values. The app does not suggest
 diagnoses, prescriptions, or dose changes, and every piece of data stays on the
 device (no network calls).
 
----
+## Screens
+
+| <img src="docs/screenshots/home.png" width="230"> | <img src="docs/screenshots/flow.png" width="230"> | <img src="docs/screenshots/timeline.png" width="230"> |
+| :---: | :---: | :---: |
+| **Home** — current estimate, time to next dose, calibration state | **Flow** — past (solid) / future (dashed), uncertainty band, measured diamonds | **Timeline** — records by date, dose / lab filters |
+
+| <img src="docs/screenshots/dose.png" width="230"> | <img src="docs/screenshots/lab.png" width="230"> | <img src="docs/screenshots/me.png" width="230"> |
+| :---: | :---: | :---: |
+| **Log a dose** — one tap for a recent combination, or pick drug / route / amount | **Log a lab result** — measured E2 / Total T, unit conversion, assay method | **Me** — personalisation progress, local storage, app lock, CSV |
 
 ## Features
 
