@@ -305,13 +305,15 @@ fun DoseSheet(
 
         SheetFooter(
             label = when {
+                draft.amountError != null -> draft.amountError!!
                 draft.repeat ->
                     "${INTERVAL_CHOICES.firstOrNull { it.first == draft.repeatEveryDays }?.second ?: "${draft.repeatEveryDays}일마다"} ${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 반복 기록"
                 editing -> "${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 로 수정"
                 else -> "${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 기록하기"
             },
-            background = HlColor.Teal,
-            foreground = HlColor.OnTeal,
+            background = if (draft.canSave) HlColor.Teal else HlColor.KeyAlt,
+            foreground = if (draft.canSave) HlColor.OnTeal else HlColor.TextDim,
+            enabled = draft.canSave,
             onClick = if (draft.repeat) onSaveRegimen else onSave,
         )
     }

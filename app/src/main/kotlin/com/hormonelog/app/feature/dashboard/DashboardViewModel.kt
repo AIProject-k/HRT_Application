@@ -27,8 +27,24 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     init {
-        val snap = store.load()
-        state = state.copy(doses = snap.doses, labs = snap.labs, regimens = snap.regimens, clinics = snap.clinics)
+        state = when (val loaded = store.load()) {
+            is RecordStore.Load.Ok -> loaded.snapshot.let {
+                state.copy(doses = it.doses, labs = it.labs, regimens = it.regimens, clinics = it.clinics)
+            }
+            RecordStore.Load.Empty -> state
+            // Start empty so the app is usable, but say so — silently showing an empty
+            // app would read as "my records are gone" with no hint that they are not.
+            is RecordStore.Load.Unreadable -> {
+                val kept = loaded.quarantined
+                state.copy(
+                    storageWarning = if (kept != null) {
+                        "기록 파일을 읽지 못했어요. 원본은 ${kept.name} 으로 따로 보관했고, 덮어쓰지 않아요. CSV 백업이 있으면 불러오기로 복구할 수 있어요."
+                    } else {
+                        "기록 파일을 읽지 못했어요. 원본을 옮기지도 못해, 새로 기록하면 덮어쓰일 수 있어요. CSV로 먼저 내보내 두세요."
+                    },
+                )
+            }
+        }
     }
 
     private fun set(next: DashboardState) { state = next }
@@ -59,6 +75,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     fun setScrub(fraction: Float?) = set(DashboardReducer.setScrub(state, fraction))
     fun setTimelineFilter(filter: TimelineFilter) = set(DashboardReducer.setTimelineFilter(state, filter))
     fun dismissToast() = set(DashboardReducer.dismissToast(state))
+    fun dismissStorageWarning() = set(DashboardReducer.dismissStorageWarning(state))
 
     fun openClinics() = set(DashboardReducer.openClinics(state))
     fun closeClinics() = set(DashboardReducer.closeClinics(state))
@@ -76,7 +93,10 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     fun undoLast() = setAndPersist(DashboardReducer.undoLast(state))
     fun saveLab(now: Instant) = setAndPersist(DashboardReducer.saveLab(state, now))
     fun saveRegimen(now: Instant) = setAndPersist(DashboardReducer.saveRegimen(state, now))
-    fun loadSampleRegimen(now: Instant) = setAndPersist(DashboardReducer.loadSampleRegimen(state, now))
+    fun confirmBackfill() = setAndPersist(DashboardReducer.confirmBackfill(state))
+    fun cancelBackfill() = set(DashboardReducer.cancelBackfill(state))
+    // Nothing is written until the backfill is confirmed, so this only sets UI state.
+    fun loadSampleRegimen(now: Instant) = set(DashboardReducer.loadSampleRegimen(state, now))
     fun saveClinic() = setAndPersist(DashboardReducer.saveClinic(state))
     fun deleteClinic(id: java.util.UUID) = setAndPersist(DashboardReducer.deleteClinic(state, id))
 

@@ -107,4 +107,32 @@ class CalibrationEngineTest {
         assertTrue(r.excluded[noTime.id]!!.contains("시각"))
         assertTrue(r.excluded[beforeAnyDose.id]!!.contains("이전 투약"))
     }
+
+    @Test
+    fun aLabMixedWithUnmodelledExposureIsExcludedForThatStatedReason() {
+        val doses = evDoses()
+        val at = doses.last().occurredAt.plus(3, ChronoUnit.DAYS)
+        val gel = DoseEvent(
+            id = UUID.randomUUID(),
+            // A route with no evidence-backed model, given between the last injection
+            // and the draw, so the measured value carries exposure the prediction cannot.
+            occurredAt = at.minus(2, ChronoUnit.DAYS),
+            sourceZoneId = "UTC",
+            drug = Drug.ESTRADIOL_TABLET,
+            route = Route.GEL,
+            amountEntered = 2.0,
+            enteredUnit = DoseUnit.MG_PER_DAY,
+            normalizedMilligrams = null,
+            status = DoseStatus.ADMINISTERED,
+        )
+        val lab = e2Lab(at, 400.0)
+
+        val clean = engine.calibrate(doses, listOf(lab))
+        assertTrue("baseline: the lab is usable on its own", clean.includedLabIds.contains(lab.id))
+
+        val mixed = engine.calibrate(doses + gel, listOf(lab))
+        assertTrue(mixed.includedLabIds.isEmpty())
+        assertEquals("모델 없는 경로 투약이 섞여 있음", mixed.excluded[lab.id])
+        assertEquals(1.0, mixed.exposureScale, 0.0)
+    }
 }

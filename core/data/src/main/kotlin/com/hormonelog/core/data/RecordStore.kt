@@ -21,8 +21,11 @@ import java.util.UUID
 
 /**
  * Plain-JSON local persistence for records — no encryption, no SQL. Enough to
- * survive an app restart; SQLCipher/Room is a later step. Corrupt or missing
- * files load as empty rather than crashing.
+ * survive an app restart; SQLCipher/Room is a later step.
+ *
+ * A file that cannot be parsed is never treated as "no records". It is moved aside
+ * first, so the next save writes a fresh file instead of overwriting the damaged one,
+ * and the bytes stay on disk to be recovered from.
  */
 class RecordStore(private val file: File) {
 
@@ -33,19 +36,43 @@ class RecordStore(private val file: File) {
         val clinics: List<Clinic> = emptyList(),
     )
 
-    fun load(): Snapshot {
-        if (!file.exists()) return Snapshot()
+    /** Outcome of a [load]; an unreadable file is distinct from having no records. */
+    sealed interface Load {
+        data class Ok(val snapshot: Snapshot) : Load
+
+        /** No file yet — a genuine first run. */
+        data object Empty : Load
+
+        /**
+         * The file existed but could not be read or parsed. It has been renamed to
+         * [quarantined] (null only if even the rename failed) so nothing overwrites it.
+         */
+        data class Unreadable(val quarantined: File?) : Load
+    }
+
+    fun load(): Load {
+        if (!file.exists()) return Load.Empty
         return try {
             val root = JSONObject(file.readText())
-            Snapshot(
-                doses = root.optJSONArray("doses").mapObjects(::doseFrom),
-                labs = root.optJSONArray("labs").mapObjects(::labFrom),
-                regimens = root.optJSONArray("regimens").mapObjects(::regimenFrom),
-                clinics = root.optJSONArray("clinics").mapObjects(::clinicFrom),
+            Load.Ok(
+                Snapshot(
+                    doses = root.optJSONArray("doses").mapObjects(::doseFrom),
+                    labs = root.optJSONArray("labs").mapObjects(::labFrom),
+                    regimens = root.optJSONArray("regimens").mapObjects(::regimenFrom),
+                    clinics = root.optJSONArray("clinics").mapObjects(::clinicFrom),
+                ),
             )
         } catch (_: Exception) {
-            Snapshot()
+            Load.Unreadable(quarantine())
         }
+    }
+
+    /** Move the unreadable file out of the way, keeping every byte of it. */
+    private fun quarantine(): File? = try {
+        val dest = File(file.parentFile, "${file.nameWithoutExtension}.corrupt-${System.currentTimeMillis()}.json")
+        if (file.renameTo(dest)) dest else null
+    } catch (_: Exception) {
+        null
     }
 
     fun save(snapshot: Snapshot) {

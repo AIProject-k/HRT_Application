@@ -4,6 +4,9 @@ import com.hormonelog.core.domain.Analyte
 import com.hormonelog.core.domain.Assay
 import com.hormonelog.core.domain.DoseStatus
 import com.hormonelog.core.domain.DoseUnit
+import com.hormonelog.core.domain.DoseEvent
+import com.hormonelog.core.domain.LabAnalyteValue
+import com.hormonelog.core.domain.LabResult
 import com.hormonelog.core.domain.Drug
 import com.hormonelog.core.domain.HistoricalReconstruction
 import com.hormonelog.core.domain.LabEligibility
@@ -20,6 +23,9 @@ import java.time.Instant
 class DashboardReducerTest {
     private val now = Instant.parse("2026-08-27T12:10:00Z")
     private val base = DashboardState()
+
+    /** Example data as records: load it, then accept the back-fill it asks about. */
+    private fun seeded() = DashboardReducer.confirmBackfill(DashboardReducer.loadSampleRegimen(base, now))
 
     @Test
     fun switchTabChangesTabAndClearsScrub() {
@@ -91,7 +97,11 @@ class DashboardReducerTest {
         assertEquals(3.5, DashboardReducer.setDoseAmount(base, "3.5").doseDraft.amount, 0.0)
         assertSame(base, DashboardReducer.setDoseAmount(base, "")) // unparseable -> unchanged instance
         assertSame(base, DashboardReducer.setDoseAmount(base, "abc"))
-        assertEquals(500.0, DashboardReducer.setDoseAmount(base, "9999").doseDraft.amount, 0.0)
+        // Out of range is kept as typed and refused with a reason, never rewritten.
+        val tooBig = DashboardReducer.setDoseAmount(base, "9999")
+        assertEquals(9999.0, tooBig.doseDraft.amount, 0.0)
+        assertNotNull(tooBig.doseDraft.amountError)
+        assertSame("a refused amount must not be saved", tooBig, DashboardReducer.saveDose(tooBig, now))
     }
 
     @Test
@@ -127,26 +137,50 @@ class DashboardReducerTest {
     }
 
     @Test
-    fun loadSampleRegimenSeedsTwoRegimensAndBackfillsEvents() {
-        val next = DashboardReducer.loadSampleRegimen(base, now)
-        assertEquals(2, next.regimens.size)
+    fun loadSampleRegimenAsksBeforeWritingAnything() {
+        val asked = DashboardReducer.loadSampleRegimen(base, now)
+        assertNotNull(asked.pendingBackfill)
+        assertTrue("nothing is written until it is accepted", asked.doses.isEmpty() && asked.regimens.isEmpty())
+
+        val applied = DashboardReducer.confirmBackfill(asked)
+        assertEquals(2, applied.regimens.size)
         // EV biweekly over 60d (~5) + CPA daily over 60d (~61)
-        assertTrue(next.doses.size in 60..70)
-        assertNotNull(next.toast)
-        // second call is a no-op-ish (already seeded)
-        val again = DashboardReducer.loadSampleRegimen(next, now)
-        assertEquals(2, again.regimens.size)
+        assertTrue(applied.doses.size in 60..70)
+        assertNull(applied.pendingBackfill)
     }
 
     @Test
-    fun saveRegimenFromDraftExpandsElapsedPortion() {
+    fun decliningTheSampleLeavesTheAppUntouched() {
+        val declined = DashboardReducer.cancelBackfill(DashboardReducer.loadSampleRegimen(base, now))
+        assertTrue(declined.doses.isEmpty() && declined.regimens.isEmpty())
+        assertNull(declined.pendingBackfill)
+    }
+
+    @Test
+    fun exampleDataIsRefusedOnceRealRecordsExist() {
+        val withRecord = DashboardReducer.saveDose(base, now)
+        val asked = DashboardReducer.loadSampleRegimen(withRecord, now)
+        assertNull("example doses must not mix into real history", asked.pendingBackfill)
+        assertEquals(1, asked.doses.size)
+    }
+
+    @Test
+    fun savingAScheduleDoesNotSilentlyBackfillThePastMonths() {
         val draft = DashboardReducer.editDose(base) {
             it.copy(repeat = true, repeatEveryDays = 14, repeatStartMillis = now.minusSeconds(60L * 86400).toEpochMilli())
         }
         val next = DashboardReducer.saveRegimen(draft, now)
+
+        // The schedule is what "저장" asked for, so it lands immediately.
         assertEquals(1, next.regimens.size)
-        assertEquals(5, next.doses.size)
         assertEquals(DashboardSheet.NONE, next.sheet)
+        // The past doses are a separate claim about what actually happened.
+        assertTrue(next.doses.isEmpty())
+        assertEquals(5, next.pendingBackfill?.doses?.size)
+
+        val accepted = DashboardReducer.confirmBackfill(next)
+        assertEquals(5, accepted.doses.size)
+        assertEquals(1, accepted.regimens.size)
     }
 
     @Test
@@ -198,7 +232,7 @@ class DashboardReducerTest {
 
     @Test
     fun deleteRegimenKeepsTheEventsItGenerated() {
-        val seeded = DashboardReducer.loadSampleRegimen(base, now)
+        val seeded = seeded()
         val doseCount = seeded.doses.size
         val regimenId = seeded.regimens.first().id
 
@@ -210,7 +244,7 @@ class DashboardReducerTest {
     @Test
     fun clearHelpersWipeTheRightCollections() {
         val seeded = DashboardReducer.saveLab(
-            DashboardReducer.editLab(DashboardReducer.loadSampleRegimen(base, now)) { it.copy(e2 = "180") },
+            DashboardReducer.editLab(seeded()) { it.copy(e2 = "180") },
             now,
         )
         assertTrue(seeded.doses.isNotEmpty() && seeded.labs.isNotEmpty() && seeded.regimens.isNotEmpty())
@@ -231,7 +265,6 @@ class DashboardReducerTest {
     fun calibrationStatusWithoutEvidenceStaysPreparing() {
         val zero = CalibrationStatus.of(includedLabs = 0, exposureScale = 1.0, canEstimate = false)
         assertEquals("예상 곡선 준비 중", zero.title)
-        assertEquals(0, zero.progressPct)
         assertFalse(zero.steps.any { it.done })
         assertTrue(zero.steps.none { it.active })
     }
@@ -239,12 +272,12 @@ class DashboardReducerTest {
     @Test
     fun calibrationStatusWithLabsReportsExposureAdjustment() {
         val up = CalibrationStatus.of(includedLabs = 2, exposureScale = 1.3, canEstimate = true)
-        assertEquals("개인화됨", up.title)
+        assertEquals("검사값으로 높이 보정됨", up.title)
         assertTrue(up.subtitle.contains("상향"))
         assertTrue(up.steps[1].done)
 
         val one = CalibrationStatus.of(includedLabs = 1, exposureScale = 0.7, canEstimate = true)
-        assertEquals("보정 중", one.title)
+        assertEquals("검사값으로 높이 보정됨", one.title)
         assertTrue(one.subtitle.contains("하향"))
     }
 
@@ -395,5 +428,46 @@ class DashboardReducerTest {
     fun aLateDoseStillCounts() {
         val s = DashboardReducer.saveDose(DashboardReducer.setDoseStatus(base, DoseStatus.DELAYED), now)
         assertEquals(1, HistoricalReconstruction.administrationsFrom(s.doses).size)
+    }
+
+    // ── restoring from CSV ────────────────────────────────────
+
+    private fun dose(at: Instant, drug: Drug = Drug.CYPROTERONE, amount: Double = 25.0) = DoseEvent(
+        id = java.util.UUID.randomUUID(),
+        occurredAt = at,
+        sourceZoneId = "Asia/Seoul",
+        drug = drug,
+        route = Route.ORAL,
+        amountEntered = amount,
+        enteredUnit = DoseUnit.MG,
+        normalizedMilligrams = amount,
+        status = DoseStatus.ADMINISTERED,
+    )
+
+    @Test
+    fun restoringKeepsBothOfTwoDosesTakenOnTheSameDay() {
+        val morning = dose(now)
+        val evening = dose(now.plusSeconds(12 * 3600))
+        val imported = DashboardReducer.mergeImported(base, listOf(morning, evening), emptyList(), 0)
+        assertEquals("a twice-daily drug is two records, not one", 2, imported.doses.size)
+    }
+
+    @Test
+    fun restoringTheSameFileTwiceDoesNotDuplicateAnything() {
+        val doses = listOf(dose(now), dose(now.plusSeconds(12 * 3600)))
+        val labs = listOf(
+            LabResult(
+                java.util.UUID.randomUUID(), now, "Asia/Seoul", Assay.UNKNOWN,
+                listOf(LabAnalyteValue(Analyte.ESTRADIOL, 300.0, "pg/mL", 300.0)),
+            ),
+        )
+        val once = DashboardReducer.mergeImported(base, doses, labs, 0)
+        assertEquals(2, once.doses.size)
+        assertEquals(1, once.labs.size)
+
+        // Re-importing the same export must be a no-op, labs included.
+        val twice = DashboardReducer.mergeImported(once, doses, labs, 0)
+        assertEquals(2, twice.doses.size)
+        assertEquals(1, twice.labs.size)
     }
 }

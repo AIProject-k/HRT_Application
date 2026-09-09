@@ -1,5 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        allowBackup=false is what makes the app's "기기 안에만 저장" claim true. Android
+        backs apps up to the user's cloud by default, which would carry the plain-text
+        record file off the device; the setting also covers device-to-device transfer.
+    -->
     <application
+        android:allowBackup="false"
         android:label="HormoneLog"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"

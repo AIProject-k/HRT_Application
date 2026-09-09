@@ -70,6 +70,9 @@ class MainActivity : ComponentActivity() {
                         onUndo = vm::undoLast,
                         onConfirmDuplicate = { vm.saveDose(now, force = true) },
                         onCancelDuplicate = vm::cancelDuplicate,
+                        onDismissStorageWarning = vm::dismissStorageWarning,
+                        onConfirmBackfill = vm::confirmBackfill,
+                        onCancelBackfill = vm::cancelBackfill,
                     ),
                 )
             }

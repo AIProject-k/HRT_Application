@@ -14,7 +14,10 @@ import com.hormonelog.core.domain.LabResult
 import com.hormonelog.core.domain.Regimen
 import com.hormonelog.core.domain.Route
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -27,15 +30,38 @@ class RecordStoreTest {
 
     private fun store() = RecordStore(tmp.newFile("records.json").also { it.delete() })
 
+    /** Unwraps a load that is expected to have succeeded. */
+    private fun RecordStore.loaded(): RecordStore.Snapshot =
+        (load() as RecordStore.Load.Ok).snapshot
+
     @Test
-    fun missingFileLoadsEmpty() {
-        assertEquals(RecordStore.Snapshot(), store().load())
+    fun missingFileIsAGenuineFirstRun() {
+        assertEquals(RecordStore.Load.Empty, store().load())
     }
 
     @Test
-    fun corruptFileLoadsEmpty() {
+    fun anUnreadableFileIsQuarantinedRatherThanReportedAsEmpty() {
         val f = tmp.newFile("bad.json").apply { writeText("{ not json") }
-        assertEquals(RecordStore.Snapshot(), RecordStore(f).load())
+        val store = RecordStore(f)
+
+        val result = store.load()
+        assertTrue("must not look like a first run", result is RecordStore.Load.Unreadable)
+
+        // The damaged bytes survive, and the original path is free for a fresh file.
+        val kept = (result as RecordStore.Load.Unreadable).quarantined
+        assertNotNull(kept)
+        assertEquals("{ not json", kept!!.readText())
+        assertFalse(f.exists())
+    }
+
+    @Test
+    fun savingAfterAnUnreadableLoadDoesNotDestroyTheOriginal() {
+        val f = tmp.newFile("bad2.json").apply { writeText("{ not json") }
+        val store = RecordStore(f)
+        val kept = (store.load() as RecordStore.Load.Unreadable).quarantined!!
+
+        store.save(RecordStore.Snapshot())
+        assertEquals("{ not json", kept.readText())
     }
 
     @Test
@@ -80,7 +106,7 @@ class RecordStoreTest {
         )
         val store = store()
         store.save(s)
-        assertEquals(s, store.load())
+        assertEquals(s, store.loaded())
     }
 
     @Test
@@ -97,8 +123,8 @@ class RecordStoreTest {
         )
         val store = store()
         store.save(s)
-        assertEquals(s, store.load())
-        assertNull(store.load().labs.single().collectedAt)
+        assertEquals(s, store.loaded())
+        assertNull(store.loaded().labs.single().collectedAt)
     }
 
     @Test
@@ -118,7 +144,7 @@ class RecordStoreTest {
         )
         val store = store()
         store.save(s)
-        val back = store.load().doses
+        val back = store.loaded().doses
         assertEquals(DoseStatus.SKIPPED, back[0].status)
         assertEquals(DoseStatus.DELAYED, back[1].status)
     }

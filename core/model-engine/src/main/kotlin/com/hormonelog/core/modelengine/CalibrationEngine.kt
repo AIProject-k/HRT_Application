@@ -12,6 +12,7 @@ import kotlin.math.ln
 
 enum class CalibrationLevel { LEVEL_0, LEVEL_1, LEVEL_2 }
 
+
 /**
  * Level 0–2 calibration: a conservative *exposure-scale* adjustment only (설계서
  * §4.4). Eligible E2 labs are compared to the population prediction at their
@@ -39,6 +40,7 @@ class CalibrationEngine(private val bundle: EvidenceBundle) {
                 it.drug != Drug.SPIRONOLACTONE && it.drug != Drug.CYPROTERONE
         }
         val supportedRoute = estrogenDoses.map { it.route }.any(bundle::supports)
+        val unmodelledDoses = estrogenDoses.filterNot { bundle.supports(it.route) }
 
         val ratios = LinkedHashMap<UUID, Double>()
         val excluded = LinkedHashMap<UUID, String>()
@@ -51,6 +53,10 @@ class CalibrationEngine(private val bundle: EvidenceBundle) {
                 measured == null -> excluded[lab.id] = "E2 값 없음"
                 estrogenDoses.none { it.occurredAt.isBefore(t) } -> excluded[lab.id] = "이전 투약 기록 없음"
                 !supportedRoute -> excluded[lab.id] = "지원 모델 없음"
+                // E2CurveEngine refuses to draw at all once any route is unmodelled,
+                // so such a lab was already being dropped — but as "예측값 산출 불가",
+                // which reads like a calculation glitch. Name the real reason instead.
+                unmodelledDoses.isNotEmpty() -> excluded[lab.id] = "모델 없는 경로 투약이 섞여 있음"
                 else -> {
                     val predicted = e2.medianAt(doses, t)
                     if (predicted == null || predicted < 15.0) {

@@ -47,8 +47,9 @@ import java.util.UUID
 private data class MeRow(val icon: String, val title: String, val sub: String, val value: String)
 
 private val ME_ROWS = listOf(
-    MeRow("🔒", "기기 안에만 저장", "서버 업로드 없음 · 계정 불필요", "켜짐"),
-    MeRow("🔑", "앱 잠금", "지문 또는 화면 잠금으로 보호", "켜짐"),
+    // No 앱 잠금 row: nothing implements a lock, and a settings row reading "켜짐"
+    // told the user their records were protected when they were not.
+    MeRow("🔒", "기기 안에만 저장", "서버 업로드 없음 · 계정 불필요 · 자동 백업 꺼짐", "켜짐"),
     MeRow("⬇️", "데이터 내보내기", "CSV로 저장해 진료 때 보여주기", "›"),
     MeRow("🔤", "언어", "한국어 · English (준비 중)", "한국어"),
     MeRow("🌙", "화면", "다크 모드 · 큰 글자", "다크"),
@@ -159,25 +160,12 @@ fun MeScreen(
             }
             Text(model.detail, style = HlType.Body, color = HlColor.TextSecondary)
 
+            // No progress bar: there is no fixed number of labs that completes anything,
+            // so a filling bar would promise a finish line the model does not have.
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("개인화 진행도", style = HlType.Label, color = HlColor.TextMuted)
+                    Text("보정 근거", style = HlType.Label, color = HlColor.TextMuted)
                     Text(model.progressLabel, style = HlType.Label, color = HlColor.Orange)
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(7.dp)
-                        .clip(RoundedCornerShape(99.dp))
-                        .background(HlColor.KeyAlt),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(model.progressPct / 100f)
-                            .height(7.dp)
-                            .clip(RoundedCornerShape(99.dp))
-                            .background(HlColor.Orange),
-                    )
                 }
                 Text(model.nextStep, style = HlType.Caption, color = HlColor.TextDim)
             }

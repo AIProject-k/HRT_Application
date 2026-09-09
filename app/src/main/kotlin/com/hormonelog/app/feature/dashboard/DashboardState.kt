@@ -36,6 +36,10 @@ enum class LabTimeChoice { NOW, THIS_MORNING, YESTERDAY, CUSTOM, UNKNOWN }
 
 enum class LabField { NONE, E2, TT }
 
+/** Accepted dose range. Outside it the entry is refused, never quietly rewritten. */
+const val DOSE_MIN = 0.5
+const val DOSE_MAX = 500.0
+
 /** Draft backing the 투약 기록 sheet. */
 data class DoseDraft(
     /** Non-null when the sheet is editing an existing record rather than adding one. */
@@ -57,6 +61,20 @@ data class DoseDraft(
     val repeatOngoing: Boolean = true,
     val repeatEndMillis: Long? = null,
 ) {
+    /**
+     * Why this amount cannot be saved, or null. Out-of-range input is reported rather
+     * than clamped: silently turning 1000 into 500 would store a dose the user never
+     * took while showing them a success message.
+     */
+    val amountError: String?
+        get() = when {
+            amount < DOSE_MIN -> "${plainNumber(DOSE_MIN)} 이상으로 입력해 주세요"
+            amount > DOSE_MAX -> "${plainNumber(DOSE_MAX)} 이하로 입력해 주세요"
+            else -> null
+        }
+
+    val canSave: Boolean get() = amountError == null
+
     companion object {
         fun of(e: DoseEvent) = DoseDraft(
             editingId = e.id,
@@ -133,6 +151,18 @@ data class ClinicDraft(
 }
 
 /**
+ * Past dose records a bulk action wants to write, held back until the user has seen
+ * what and how many. Saving a schedule and back-filling the months before it are two
+ * different acts, and only the first is what "저장" asked for.
+ */
+data class PendingBackfill(
+    val doses: List<DoseEvent>,
+    val regimens: List<Regimen>,
+    val title: String,
+    val body: String,
+)
+
+/**
  * The record lists as they were immediately before a destructive or additive change,
  * so one tap can put them back. Only the three record collections are captured — UI
  * position is not something the user asked to undo.
@@ -157,6 +187,12 @@ data class DashboardState(
     /** 0f..1f position of the chart scrub cursor, or null when not scrubbing. */
     val scrubFraction: Float? = null,
     val toast: String? = null,
+    /**
+     * Persistent banner for a storage problem the user has to know about — unlike
+     * [toast] it does not time out, because losing this message could mean losing
+     * the chance to recover the records.
+     */
+    val storageWarning: String? = null,
     /** Set alongside [toast] when the action it reports can be reversed. */
     val undo: UndoSnapshot? = null,
     /**
@@ -164,6 +200,8 @@ data class DashboardState(
      * a double entry. Saving waits for the user to confirm.
      */
     val duplicateDose: DoseEvent? = null,
+    /** Bulk past-dose insert waiting for confirmation. */
+    val pendingBackfill: PendingBackfill? = null,
     val newIds: Set<String> = emptySet(),
     val doses: List<DoseEvent> = emptyList(),
     val labs: List<LabResult> = emptyList(),
@@ -210,6 +248,8 @@ object DashboardReducer {
         s.copy(scrubFraction = fraction?.coerceIn(0f, 1f))
 
     fun dismissToast(s: DashboardState): DashboardState = s.copy(toast = null, undo = null)
+
+    fun dismissStorageWarning(s: DashboardState): DashboardState = s.copy(storageWarning = null)
 
     // ── 병원 메모 ─────────────────────────────────────────────
     fun openClinics(s: DashboardState): DashboardState = s.copy(clinicsOpen = true)
@@ -331,10 +371,13 @@ object DashboardReducer {
         return editDose(s) { it.copy(amount = round2(next)) }
     }
 
-    /** Set the amount from typed text; ignores unparseable input, clamps the rest. */
+    /**
+     * Set the amount from typed text. Unparseable input is ignored, but a parseable
+     * out-of-range value is kept as typed so [DoseDraft.amountError] can explain it.
+     */
     fun setDoseAmount(s: DashboardState, text: String): DashboardState {
         val v = text.toDoubleOrNull() ?: return s
-        return editDose(s) { it.copy(amount = round2(v.coerceIn(DOSE_MIN, DOSE_MAX))) }
+        return editDose(s) { it.copy(amount = round2(v)) }
     }
 
     /**
@@ -344,6 +387,7 @@ object DashboardReducer {
      */
     fun saveDose(s: DashboardState, now: Instant, force: Boolean = false): DashboardState {
         val d = s.doseDraft
+        if (!d.canSave) return s
         val zone = ZoneId.systemDefault()
         val at = resolveDoseTime(d.time, now, d.customEpochMillis)
         if (!force) {
@@ -400,54 +444,123 @@ object DashboardReducer {
             endAt = end,
             active = d.repeatOngoing || (end != null && end.isAfter(now)),
         )
-        return applyRegimens(s, listOf(regimen), now, "반복 일정 저장됨")
+        val generated = pastDosesFor(s, listOf(regimen), now)
+        val saved = s.copy(
+            regimens = s.regimens + regimen,
+            sheet = DashboardSheet.NONE,
+            undo = snapshot(s),
+            toast = "반복 일정 저장됨",
+        )
+        if (generated.isEmpty()) return saved
+        return saved.copy(
+            pendingBackfill = PendingBackfill(
+                doses = generated,
+                regimens = emptyList(),
+                title = "지난 투약도 기록할까요?",
+                body = "${describeRange(generated)} 사이의 ${generated.size}건이에요. " +
+                    "실제로 투약한 것만 기록해 주세요. 나중에 개별 삭제할 수 있어요.",
+            ),
+        )
     }
 
-    /** Merge CSV-imported records: new doses de-duped against same-day/same-drug, labs appended. */
+    /** Occurrences a schedule would have produced before [now], minus days already recorded. */
+    private fun pastDosesFor(s: DashboardState, regimens: List<Regimen>, now: Instant): List<DoseEvent> =
+        regimens
+            .flatMap { Regimen.expand(it, now) }
+            .filterNot { g -> s.doses.any { sameDayDrug(it, g) } }
+            .sortedBy { it.occurredAt }
+
+    private fun describeRange(doses: List<DoseEvent>): String {
+        val zone = ZoneId.systemDefault()
+        fun d(i: Instant) = i.atZone(zone).let { "${it.monthValue}월 ${it.dayOfMonth}일" }
+        return "${d(doses.first().occurredAt)} ~ ${d(doses.last().occurredAt)}"
+    }
+
+    fun confirmBackfill(s: DashboardState): DashboardState {
+        val p = s.pendingBackfill ?: return s
+        return s.copy(
+            doses = (s.doses + p.doses).sortedBy { it.occurredAt },
+            regimens = s.regimens + p.regimens,
+            pendingBackfill = null,
+            undo = snapshot(s),
+            toast = "지난 투약 ${p.doses.size}건을 기록에 추가했어요",
+            newIds = p.doses.map { it.id.toString() }.toSet(),
+        )
+    }
+
+    fun cancelBackfill(s: DashboardState): DashboardState =
+        s.copy(pendingBackfill = null, toast = "지난 투약은 기록하지 않았어요")
+
+    /**
+     * Merge CSV-imported records. Identity is the exact instant plus what was taken,
+     * not the calendar day: a drug taken twice in one day is two real records, and
+     * a day-level rule would silently drop the second one on every restore. Labs are
+     * matched the same way instead of being appended blindly.
+     */
     fun mergeImported(
         s: DashboardState,
         doses: List<DoseEvent>,
         labs: List<LabResult>,
         skipped: Int,
     ): DashboardState {
-        val newDoses = doses.filterNot { g -> s.doses.any { sameDayDrug(it, g) } }
+        val newDoses = doses.filterNot { g -> s.doses.any { sameDoseEvent(it, g) } }
+        val newLabs = labs.filterNot { g -> s.labs.any { sameLabResult(it, g) } }
+        val duplicates = (doses.size - newDoses.size) + (labs.size - newLabs.size)
         val addedNote = buildString {
-            append("CSV 불러옴 · 투약 ${newDoses.size}건 · 검사 ${labs.size}건")
+            append("CSV 불러옴 · 투약 ${newDoses.size}건 · 검사 ${newLabs.size}건")
+            if (duplicates > 0) append(" · 이미 있는 기록 $duplicates")
             if (skipped > 0) append(" · 건너뜀 $skipped")
         }
         return s.copy(
             doses = (s.doses + newDoses).sortedBy { it.occurredAt },
-            labs = (s.labs + labs).sortedBy { it.collectedAt ?: Instant.MIN },
+            labs = (s.labs + newLabs).sortedBy { it.collectedAt ?: Instant.MIN },
+            undo = snapshot(s),
             toast = addedNote,
-            newIds = newDoses.map { it.id.toString() }.toSet(),
+            newIds = (newDoses.map { it.id.toString() } + newLabs.map { it.id.toString() }).toSet(),
         )
     }
 
-    /** One-tap example: EV IM 10mg/2주 + CPA 경구 25mg/일, started 60 days ago. */
+    private fun sameDoseEvent(a: DoseEvent, b: DoseEvent): Boolean =
+        a.drug == b.drug && a.route == b.route &&
+            a.occurredAt == b.occurredAt &&
+            a.amountEntered == b.amountEntered && a.enteredUnit == b.enteredUnit
+
+    private fun sameLabResult(a: LabResult, b: LabResult): Boolean =
+        a.collectedAt == b.collectedAt &&
+            a.analytes.map { it.analyte to it.reportedValue }.toSet() ==
+            b.analytes.map { it.analyte to it.reportedValue }.toSet()
+
+    /**
+     * Example data: EV IM 10mg/2주 + CPA 경구 25mg/일 for the last 60 days.
+     *
+     * It is written as ordinary records, indistinguishable from real ones afterwards,
+     * so it is offered only into an app with nothing in it and only after the user has
+     * confirmed. Mixing invented doses into real history would quietly corrupt every
+     * curve drawn from then on.
+     */
     fun loadSampleRegimen(s: DashboardState, now: Instant): DashboardState {
-        if (s.regimens.isNotEmpty()) return s.copy(toast = "이미 반복 일정이 있어요")
+        if (s.doses.isNotEmpty() || s.labs.isNotEmpty() || s.regimens.isNotEmpty()) {
+            return s.copy(toast = "기록이 있을 때는 예시를 넣지 않아요 · 예시와 실제 기록이 섞이면 곡선을 믿을 수 없어요")
+        }
         val start = now.minus(60, ChronoUnit.DAYS)
         val sample = listOf(
             Regimen(UUID.randomUUID(), Drug.ESTRADIOL_VALERATE, Route.IM_INJECTION, 10.0, DoseUnit.MG, 14, start, null),
             Regimen(UUID.randomUUID(), Drug.CYPROTERONE, Route.ORAL, 25.0, DoseUnit.MG, 1, start, null),
         )
-        return applyRegimens(s, sample, now, "예시 데이터 넣음 · EV 2주 + CPA 매일 (2개월)")
-    }
-
-    private fun applyRegimens(s: DashboardState, regimens: List<Regimen>, now: Instant, toastPrefix: String): DashboardState {
-        val generated = regimens
-            .flatMap { Regimen.expand(it, now) }
-            .filterNot { g -> s.doses.any { sameDayDrug(it, g) } }
-            .sortedBy { it.occurredAt }
+        val generated = pastDosesFor(s, sample, now)
+        if (generated.isEmpty()) return s
         return s.copy(
-            regimens = s.regimens + regimens,
-            doses = (s.doses + generated).sortedBy { it.occurredAt },
-            sheet = DashboardSheet.NONE,
-            toast = "$toastPrefix · ${generated.size}건 기록에 추가했어요",
-            newIds = generated.map { it.id.toString() }.toSet(),
+            pendingBackfill = PendingBackfill(
+                doses = generated,
+                regimens = sample,
+                title = "예시 데이터를 넣을까요?",
+                body = "EV 2주 + CPA 매일, ${describeRange(generated)} 사이의 ${generated.size}건이 " +
+                    "실제 기록과 똑같이 저장돼요. 둘러본 뒤에는 내 정보 → 전체 초기화로 지워 주세요.",
+            ),
         )
     }
 
+    /** Day-level match, used only when expanding a repeating schedule. */
     private fun sameDayDrug(a: DoseEvent, b: DoseEvent): Boolean =
         a.drug == b.drug &&
             a.occurredAt.epochSecond / 86_400L == b.occurredAt.epochSecond / 86_400L
@@ -525,8 +638,6 @@ object DashboardReducer {
     // ── helpers ───────────────────────────────────────────────
     /** Two same-drug records inside this window are treated as a possible double entry. */
     const val DUPLICATE_WINDOW_SECONDS = 6L * 3600L
-    private const val DOSE_MIN = 0.5
-    private const val DOSE_MAX = 500.0
     private fun round2(v: Double): Double = Math.round(v * 100.0) / 100.0
 }
 
