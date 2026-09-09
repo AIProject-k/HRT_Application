@@ -35,7 +35,7 @@ class CalibrationEngine(private val bundle: EvidenceBundle) {
 
     fun calibrate(doses: List<DoseEvent>, labs: List<LabResult>): CalibrationResult {
         val estrogenDoses = doses.filter {
-            (it.status == DoseStatus.ADMINISTERED || it.status == DoseStatus.CORRECTED) &&
+            it.status.wasTaken &&
                 it.drug != Drug.SPIRONOLACTONE && it.drug != Drug.CYPROTERONE
         }
         val supportedRoute = estrogenDoses.map { it.route }.any(bundle::supports)

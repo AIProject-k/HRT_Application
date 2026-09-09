@@ -19,6 +19,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +34,7 @@ import com.hormonelog.app.feature.common.hint
 import com.hormonelog.app.feature.common.label
 import com.hormonelog.app.feature.dashboard.LabDraft
 import com.hormonelog.app.feature.dashboard.LabField
+import com.hormonelog.app.feature.common.DateTimePickerDialog
 import com.hormonelog.app.feature.dashboard.LabTimeChoice
 import com.hormonelog.app.feature.dashboard.fmtDate
 import com.hormonelog.app.feature.dashboard.fmtShort
@@ -69,11 +74,13 @@ fun LabSheet(
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val resolved = resolveLabTime(draft.time, now, zone)
+    val resolved = resolveLabTime(draft.time, now, zone, draft.customEpochMillis)
     val canSave = draft.canSave
+    var pickingDate by remember { mutableStateOf(false) }
+    val editing = draft.editingId != null
 
     Column(modifier = modifier.fillMaxSize().background(HlColor.Background)) {
-        SheetHeader("검사 결과 기록", onClose)
+        SheetHeader(if (editing) "검사 결과 수정" else "검사 결과 기록", onClose)
 
         Column(
             modifier = Modifier
@@ -126,13 +133,34 @@ fun LabSheet(
                 onClick = { onFocus(LabField.TT) },
             )
 
-            FieldBlock("검사 시간") {
+            FieldBlock("채혈 시간") {
+                Text("결과를 받은 시간이 아니라, 피를 뽑은 시간이에요", style = HlType.Caption, color = HlColor.TextDim)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     LAB_TIME_CHOICES.forEach { (choice, lbl) ->
                         HlChip(lbl, draft.time == choice, { onEdit { it.copy(time = choice) } })
                     }
+                    HlChip(
+                        label = if (draft.time == LabTimeChoice.CUSTOM && resolved != null) {
+                            "${fmtDate(resolved, zone)} ${fmtTime(resolved, zone)}"
+                        } else {
+                            "날짜 선택"
+                        },
+                        selected = draft.time == LabTimeChoice.CUSTOM,
+                        onClick = { pickingDate = true },
+                    )
+                    HlChip("시각 모름", draft.time == LabTimeChoice.UNKNOWN, {
+                        onEdit { it.copy(time = LabTimeChoice.UNKNOWN) }
+                    })
                 }
-                Text("${fmtDate(resolved, zone)} ${fmtTime(resolved, zone)} 로 저장돼요", style = HlType.Caption, color = HlColor.TextDim)
+                Text(
+                    if (resolved == null) {
+                        "값은 그대로 저장돼요. 다만 채혈 시각을 몰라 곡선 보정에는 쓰지 않아요."
+                    } else {
+                        "${fmtDate(resolved, zone)} ${fmtTime(resolved, zone)} 로 저장돼요"
+                    },
+                    style = HlType.Caption,
+                    color = HlColor.TextDim,
+                )
             }
 
             FieldBlock("검사 방법") {
@@ -171,7 +199,8 @@ fun LabSheet(
                 NoteInput(draft.note, "예: OO의원 / 공복 채혈") { onEdit { d -> d.copy(note = it) } }
             }
 
-            if (lastDose != null) {
+            // Needs a collection time to measure from, so it is dropped for "시각 모름".
+            if (lastDose != null && resolved != null) {
                 val days = ((resolved.toEpochMilli() - lastDose.occurredAt.toEpochMilli()) / 3_600_000.0 / 24.0).roundToInt()
                 Text(
                     "마지막 투약(${fmtShort(lastDose.occurredAt, zone)})으로부터 약 ${days}일 뒤 채혈로 기록돼요.",
@@ -186,11 +215,27 @@ fun LabSheet(
         }
 
         SheetFooter(
-            label = if (canSave) "검사 결과 저장" else "E2 또는 Total T를 입력해 주세요",
+            label = when {
+                !canSave -> "E2 또는 Total T를 입력해 주세요"
+                editing -> "검사 결과 수정 저장"
+                else -> "검사 결과 저장"
+            },
             background = if (canSave) HlColor.Yellow else HlColor.KeyAlt,
             foreground = if (canSave) HlColor.OnYellow else HlColor.TextDim,
             enabled = canSave,
             onClick = onSave,
+        )
+    }
+
+    if (pickingDate) {
+        DateTimePickerDialog(
+            seedMillis = draft.customEpochMillis ?: now.toEpochMilli(),
+            zone = zone,
+            onDismiss = { pickingDate = false },
+            onPicked = { millis ->
+                onEdit { it.copy(time = LabTimeChoice.CUSTOM, customEpochMillis = millis) }
+                pickingDate = false
+            },
         )
     }
 }

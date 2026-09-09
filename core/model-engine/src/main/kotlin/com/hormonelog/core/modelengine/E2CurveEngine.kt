@@ -25,7 +25,7 @@ class E2CurveEngine(private val bundle: EvidenceBundle) {
         exposureScale: Double = 1.0,
     ): EstimateResult {
         val administered = doses.filter {
-            it.status == DoseStatus.ADMINISTERED || it.status == DoseStatus.CORRECTED
+            it.status.wasTaken
         }
         if (administered.isEmpty()) return EstimateResult.Unavailable(ModelUnavailableReason.NO_DATA)
 

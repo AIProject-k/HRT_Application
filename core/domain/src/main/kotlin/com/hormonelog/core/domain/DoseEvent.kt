@@ -32,5 +32,5 @@ data class DoseEvent(
 
 object HistoricalReconstruction {
     fun administrationsFrom(events: List<DoseEvent>): List<DoseEvent> =
-        events.filter { it.status == DoseStatus.ADMINISTERED || it.status == DoseStatus.CORRECTED }
+        events.filter { it.status.wasTaken }
 }

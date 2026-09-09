@@ -1,8 +1,13 @@
 package com.hormonelog.app.feature.dashboard
 
 import com.hormonelog.core.domain.Analyte
+import com.hormonelog.core.domain.Assay
 import com.hormonelog.core.domain.DoseStatus
 import com.hormonelog.core.domain.DoseUnit
+import com.hormonelog.core.domain.Drug
+import com.hormonelog.core.domain.HistoricalReconstruction
+import com.hormonelog.core.domain.LabEligibility
+import com.hormonelog.core.domain.Route
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -174,7 +179,8 @@ class DashboardReducerTest {
     @Test
     fun deleteDoseAndLabRemoveOnlyTheTargetRow() {
         var s = DashboardReducer.saveDose(base, now)
-        s = DashboardReducer.saveDose(s, now.plusSeconds(60))
+        // A minute apart is inside the duplicate window, so this second one is deliberate.
+        s = DashboardReducer.saveDose(s, now.plusSeconds(60), force = true)
         s = DashboardReducer.saveLab(DashboardReducer.editLab(s) { it.copy(e2 = "200") }, now)
         val doseId = s.doses.first().id
         val labId = s.labs.single().id
@@ -240,5 +246,154 @@ class DashboardReducerTest {
         val one = CalibrationStatus.of(includedLabs = 1, exposureScale = 0.7, canEstimate = true)
         assertEquals("보정 중", one.title)
         assertTrue(one.subtitle.contains("하향"))
+    }
+
+    // ── recording honestly ────────────────────────────────────
+
+    @Test
+    fun labMethodDefaultsToUnknownRatherThanAssumingAnAssay() {
+        assertEquals(Assay.UNKNOWN, base.labDraft.method)
+        val saved = DashboardReducer.saveLab(DashboardReducer.editLab(base) { it.copy(e2 = "300") }, now)
+        assertEquals(Assay.UNKNOWN, saved.labs.single().assay)
+    }
+
+    @Test
+    fun pickingADrugSnapsRouteAndUnitToOnesItCanActuallyUse() {
+        val patch = DashboardReducer.setDoseDrug(base, Drug.ESTRADIOL_PATCH)
+        assertEquals(Route.PATCH, patch.doseDraft.route)
+        assertEquals(DoseUnit.PATCH, patch.doseDraft.unit)
+
+        // Going back: a patch route must not survive onto an injected ester.
+        val ester = DashboardReducer.setDoseDrug(patch, Drug.ESTRADIOL_VALERATE)
+        assertEquals(Route.IM_INJECTION, ester.doseDraft.route)
+        assertEquals(DoseUnit.MG, ester.doseDraft.unit)
+    }
+
+    @Test
+    fun labWithUnknownCollectionTimeIsKeptButNotEligibleForCalibration() {
+        val draft = DashboardReducer.editLab(base) { it.copy(e2 = "300", time = LabTimeChoice.UNKNOWN) }
+        val lab = DashboardReducer.saveLab(draft, now).labs.single()
+        assertNull(lab.collectedAt)
+        assertFalse(LabEligibility.evaluate(lab).eligible)
+    }
+
+    @Test
+    fun labAcceptsAnArbitraryCollectionInstant() {
+        val millis = Instant.parse("2026-08-01T07:15:00Z").toEpochMilli()
+        val draft = DashboardReducer.editLab(base) {
+            it.copy(e2 = "300", time = LabTimeChoice.CUSTOM, customEpochMillis = millis)
+        }
+        assertEquals(millis, DashboardReducer.saveLab(draft, now).labs.single().collectedAt?.toEpochMilli())
+    }
+
+    // ── mistakes ──────────────────────────────────────────────
+
+    @Test
+    fun aSecondDoseOfTheSameDrugSoonAfterAsksBeforeSaving() {
+        val first = DashboardReducer.saveDose(base, now)
+        val retap = DashboardReducer.saveDose(first, now.plusSeconds(120))
+        assertNotNull(retap.duplicateDose)
+        assertEquals("nothing is written while the question is open", 1, retap.doses.size)
+
+        val confirmed = DashboardReducer.saveDose(retap, now.plusSeconds(120), force = true)
+        assertEquals(2, confirmed.doses.size)
+        assertNull(confirmed.duplicateDose)
+    }
+
+    @Test
+    fun aDifferentDrugAtTheSameMomentIsNotADuplicate() {
+        val first = DashboardReducer.saveDose(base, now)
+        val other = DashboardReducer.saveDose(DashboardReducer.setDoseDrug(first, Drug.CYPROTERONE), now)
+        assertNull(other.duplicateDose)
+        assertEquals(2, other.doses.size)
+    }
+
+    @Test
+    fun undoRestoresRecordsRemovedByADelete() {
+        val saved = DashboardReducer.saveDose(base, now)
+        val id = saved.doses.single().id
+        val deleted = DashboardReducer.deleteDose(saved, id)
+        assertTrue(deleted.doses.isEmpty())
+
+        val restored = DashboardReducer.undoLast(deleted)
+        assertEquals(1, restored.doses.size)
+        assertEquals(id, restored.doses.single().id)
+        assertNull("the offer is spent once taken", restored.undo)
+    }
+
+    @Test
+    fun undoAlsoReachesAFullReset() {
+        var s = DashboardReducer.saveDose(base, now)
+        s = DashboardReducer.saveLab(DashboardReducer.editLab(s) { it.copy(e2 = "300") }, now)
+        val wiped = DashboardReducer.clearAllRecords(s)
+        assertTrue(wiped.doses.isEmpty() && wiped.labs.isEmpty())
+
+        val restored = DashboardReducer.undoLast(wiped)
+        assertEquals(1, restored.doses.size)
+        assertEquals(1, restored.labs.size)
+    }
+
+    // ── editing ───────────────────────────────────────────────
+
+    @Test
+    fun editingADoseReplacesItInPlaceInsteadOfAddingAnother() {
+        val saved = DashboardReducer.saveDose(base, now)
+        val original = saved.doses.single()
+
+        var s = DashboardReducer.beginEditDose(saved, original.id)
+        assertEquals(DashboardSheet.DOSE, s.sheet)
+        assertEquals(original.id, s.doseDraft.editingId)
+
+        s = DashboardReducer.setDoseAmount(s, "7.5")
+        s = DashboardReducer.saveDose(s, now)
+
+        val edited = s.doses.single()
+        assertEquals("still one record", 1, s.doses.size)
+        assertEquals(original.id, edited.id)
+        assertEquals(7.5, edited.amountEntered, 0.0001)
+        assertEquals("the edit is a new revision of the same event", 2, edited.revision)
+        assertNull(s.doseDraft.editingId)
+    }
+
+    @Test
+    fun editingALabReplacesItAndKeepsItsId() {
+        val saved = DashboardReducer.saveLab(DashboardReducer.editLab(base) { it.copy(e2 = "300") }, now)
+        val original = saved.labs.single()
+
+        var s = DashboardReducer.beginEditLab(saved, original.id)
+        assertEquals("300", s.labDraft.e2)
+        s = DashboardReducer.editLab(s) { it.copy(e2 = "412") }
+        s = DashboardReducer.saveLab(s, now)
+
+        assertEquals(1, s.labs.size)
+        assertEquals(original.id, s.labs.single().id)
+        assertEquals(412.0, s.labs.single().analytes.single().reportedValue, 0.0001)
+    }
+
+    @Test
+    fun abandoningAnEditDoesNotArmItAgainstTheNextNewRecord() {
+        val saved = DashboardReducer.saveDose(base, now)
+        val editing = DashboardReducer.beginEditDose(saved, saved.doses.single().id)
+        val closed = DashboardReducer.closeSheet(editing)
+        assertNull(closed.doseDraft.editingId)
+
+        // The next save must add, not overwrite the record the sheet had been showing.
+        val added = DashboardReducer.saveDose(closed, now.plusSeconds(60_000), force = true)
+        assertEquals(2, added.doses.size)
+    }
+
+    // ── missed and late doses ─────────────────────────────────
+
+    @Test
+    fun aSkippedDoseIsRecordedButLeftOutOfTheReconstruction() {
+        val s = DashboardReducer.saveDose(DashboardReducer.setDoseStatus(base, DoseStatus.SKIPPED), now)
+        assertEquals(DoseStatus.SKIPPED, s.doses.single().status)
+        assertTrue(HistoricalReconstruction.administrationsFrom(s.doses).isEmpty())
+    }
+
+    @Test
+    fun aLateDoseStillCounts() {
+        val s = DashboardReducer.saveDose(DashboardReducer.setDoseStatus(base, DoseStatus.DELAYED), now)
+        assertEquals(1, HistoricalReconstruction.administrationsFrom(s.doses).size)
     }
 }

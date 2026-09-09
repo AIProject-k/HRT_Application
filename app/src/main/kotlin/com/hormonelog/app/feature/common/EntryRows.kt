@@ -69,9 +69,14 @@ fun RecentRow(entry: TimelineEntry, modifier: Modifier = Modifier) {
     }
 }
 
-/** Timeline row with the left dot/line rail. Pass [onDelete] to show a 삭제 affordance. */
+/** Timeline row with the left dot/line rail. Pass [onEdit]/[onDelete] to show those affordances. */
 @Composable
-fun TimelineItemRow(entry: TimelineEntry, modifier: Modifier = Modifier, onDelete: (() -> Unit)? = null) {
+fun TimelineItemRow(
+    entry: TimelineEntry,
+    modifier: Modifier = Modifier,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+) {
     Row(
         modifier = modifier.height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
@@ -138,6 +143,14 @@ fun TimelineItemRow(entry: TimelineEntry, modifier: Modifier = Modifier, onDelet
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(entry.timeText, style = HlType.Caption, color = HlColor.TextDim)
+                    if (onEdit != null) {
+                        Text(
+                            "수정",
+                            style = HlType.Caption,
+                            color = HlColor.Teal,
+                            modifier = Modifier.clickable(onClick = onEdit),
+                        )
+                    }
                     if (onDelete != null) {
                         Text(
                             "삭제",

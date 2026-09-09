@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -24,11 +25,21 @@ import com.hormonelog.app.ui.theme.HlColor
 import com.hormonelog.app.ui.theme.HlType
 import kotlinx.coroutines.delay
 
+/**
+ * [onUndo] non-null puts a 실행 취소 action on the toast; the message then lingers
+ * longer, because a toast the user has to read *and* decide about needs more than the
+ * glance an acknowledgement needs.
+ */
 @Composable
-fun ToastOverlay(text: String?, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    LaunchedEffect(text) {
+fun ToastOverlay(
+    text: String?,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    onUndo: (() -> Unit)? = null,
+) {
+    LaunchedEffect(text, onUndo != null) {
         if (text != null) {
-            delay(2600)
+            delay(if (onUndo != null) 5000 else 2600)
             onDismiss()
         }
     }
@@ -52,7 +63,19 @@ fun ToastOverlay(text: String?, onDismiss: () -> Unit, modifier: Modifier = Modi
                     text ?: "",
                     style = HlType.CardTitle,
                     color = HlColor.ToastForeground,
+                    modifier = Modifier.weight(1f),
                 )
+                if (onUndo != null) {
+                    Text(
+                        "실행 취소",
+                        style = HlType.LabelStrong,
+                        color = HlColor.Teal,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onUndo)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
             }
         }
     }

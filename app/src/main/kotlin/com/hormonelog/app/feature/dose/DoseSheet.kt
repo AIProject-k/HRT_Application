@@ -43,9 +43,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hormonelog.app.feature.common.DOSE_SHEET_DRUGS
-import com.hormonelog.app.feature.common.DOSE_SHEET_ROUTES
-import com.hormonelog.app.feature.common.DOSE_SHEET_UNITS
+import com.hormonelog.app.feature.common.DOSE_STATUS_CHOICES
+import com.hormonelog.app.feature.common.hint
 import com.hormonelog.app.feature.common.isAntiandrogen
+import com.hormonelog.core.domain.DoseStatus
+import com.hormonelog.core.domain.allowedRoutes
+import com.hormonelog.core.domain.allowedUnits
 import com.hormonelog.app.feature.common.label
 import com.hormonelog.app.feature.dashboard.DoseDraft
 import com.hormonelog.app.feature.dashboard.DoseTimeChoice
@@ -92,6 +95,9 @@ fun DoseSheet(
     zone: ZoneId,
     lastDose: com.hormonelog.core.domain.DoseEvent?,
     onEdit: ((DoseDraft) -> DoseDraft) -> Unit,
+    onSetDrug: (Drug) -> Unit,
+    onSetRoute: (Route) -> Unit,
+    onSetStatus: (DoseStatus) -> Unit,
     onStep: (Boolean) -> Unit,
     onSetAmount: (String) -> Unit,
     onClose: () -> Unit,
@@ -119,7 +125,8 @@ fun DoseSheet(
     var pendingDateMillis by remember { mutableStateOf<Long?>(null) }
 
     Column(modifier = modifier.fillMaxSize().background(HlColor.Background)) {
-        SheetHeader("투약 기록", onClose)
+        val editing = draft.editingId != null
+        SheetHeader(if (editing) "투약 기록 수정" else "투약 기록", onClose)
 
         Column(
             modifier = Modifier
@@ -166,15 +173,15 @@ fun DoseSheet(
             FieldBlock("약물") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     DOSE_SHEET_DRUGS.forEach { d ->
-                        HlChip(d.label, draft.drug == d, { onEdit { it.copy(drug = d) } })
+                        HlChip(d.label, draft.drug == d, { onSetDrug(d) })
                     }
                 }
             }
 
             FieldBlock("투여 방법") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    DOSE_SHEET_ROUTES.forEach { r ->
-                        HlChip(r.label, draft.route == r, { onEdit { it.copy(route = r) } })
+                    draft.drug.allowedRoutes.forEach { r ->
+                        HlChip(r.label, draft.route == r, { onSetRoute(r) })
                     }
                 }
             }
@@ -212,7 +219,7 @@ fun DoseSheet(
                     StepperButton("+") { onStep(true) }
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    DOSE_SHEET_UNITS.forEach { u ->
+                    draft.route.allowedUnits.forEach { u ->
                         HlChip(
                             u.label, draft.unit == u, { onEdit { it.copy(unit = u) } },
                             shape = RoundedCornerShape(9.dp),
@@ -280,16 +287,28 @@ fun DoseSheet(
                 }
             }
 
+            if (!draft.repeat) {
+                FieldBlock("상태") {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        DOSE_STATUS_CHOICES.forEach { st ->
+                            HlChip(st.label, draft.status == st, { onSetStatus(st) })
+                        }
+                    }
+                    Text(draft.status.hint, style = HlType.Caption, color = HlColor.TextDim)
+                }
+            }
+
             FieldBlock("메모 (선택)") {
                 NoteInput(draft.note, "예: 왼쪽 허벅지, 통증 조금") { onEdit { d -> d.copy(note = it) } }
             }
         }
 
         SheetFooter(
-            label = if (draft.repeat) {
-                "${INTERVAL_CHOICES.firstOrNull { it.first == draft.repeatEveryDays }?.second ?: "${draft.repeatEveryDays}일마다"} ${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 반복 기록"
-            } else {
-                "${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 기록하기"
+            label = when {
+                draft.repeat ->
+                    "${INTERVAL_CHOICES.firstOrNull { it.first == draft.repeatEveryDays }?.second ?: "${draft.repeatEveryDays}일마다"} ${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 반복 기록"
+                editing -> "${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 로 수정"
+                else -> "${draft.drug.label} ${trimAmount(draft.amount)}${draft.unit.label} 기록하기"
             },
             background = HlColor.Teal,
             foreground = HlColor.OnTeal,

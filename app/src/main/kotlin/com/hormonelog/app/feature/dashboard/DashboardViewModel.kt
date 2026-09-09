@@ -7,6 +7,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.hormonelog.core.data.CsvIo
 import com.hormonelog.core.data.RecordStore
+import com.hormonelog.core.domain.DoseStatus
+import com.hormonelog.core.domain.Drug
+import com.hormonelog.core.domain.Route
 import java.io.File
 import java.time.Instant
 
@@ -40,6 +43,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     fun openSheet(sheet: DashboardSheet) = set(DashboardReducer.openSheet(state, sheet))
     fun closeSheet() = set(DashboardReducer.closeSheet(state))
     fun editDose(block: (DoseDraft) -> DoseDraft) = set(DashboardReducer.editDose(state, block))
+    fun setDoseDrug(drug: Drug) = set(DashboardReducer.setDoseDrug(state, drug))
+    fun setDoseRoute(route: Route) = set(DashboardReducer.setDoseRoute(state, route))
+    fun setDoseStatus(status: DoseStatus) = set(DashboardReducer.setDoseStatus(state, status))
+    fun cancelDuplicate() = set(DashboardReducer.cancelDuplicate(state))
+    fun beginEditDose(id: java.util.UUID) = set(DashboardReducer.beginEditDose(state, id))
+    fun beginEditLab(id: java.util.UUID) = set(DashboardReducer.beginEditLab(state, id))
     fun stepDose(up: Boolean) = set(DashboardReducer.stepDose(state, up))
     fun setDoseAmount(text: String) = set(DashboardReducer.setDoseAmount(state, text))
     fun editLab(block: (LabDraft) -> LabDraft) = set(DashboardReducer.editLab(state, block))
@@ -59,7 +68,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelClinicDraft() = set(DashboardReducer.cancelClinicDraft(state))
 
     // ── persisted ──
-    fun saveDose(now: Instant) = setAndPersist(DashboardReducer.saveDose(state, now))
+    fun saveDose(now: Instant, force: Boolean = false) {
+        val next = DashboardReducer.saveDose(state, now, force)
+        // A parked duplicate has not changed any record yet, so nothing to persist.
+        if (next.duplicateDose != null) set(next) else setAndPersist(next)
+    }
+    fun undoLast() = setAndPersist(DashboardReducer.undoLast(state))
     fun saveLab(now: Instant) = setAndPersist(DashboardReducer.saveLab(state, now))
     fun saveRegimen(now: Instant) = setAndPersist(DashboardReducer.saveRegimen(state, now))
     fun loadSampleRegimen(now: Instant) = setAndPersist(DashboardReducer.loadSampleRegimen(state, now))

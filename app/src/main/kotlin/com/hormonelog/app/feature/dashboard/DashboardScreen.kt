@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.hormonelog.app.feature.clinics.ClinicsScreen
 import com.hormonelog.app.feature.common.BottomTabs
+import com.hormonelog.app.feature.common.label
 import com.hormonelog.app.feature.common.ToastOverlay
 import com.hormonelog.app.feature.dose.DoseSheet
 import com.hormonelog.app.feature.flow.FlowScreen
@@ -22,9 +23,11 @@ import com.hormonelog.app.feature.lab.LabSheet
 import com.hormonelog.app.feature.me.MeScreen
 import com.hormonelog.app.feature.timeline.TimelineScreen
 import com.hormonelog.app.ui.theme.HlColor
+import com.hormonelog.app.ui.components.ConfirmDialog
 import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.DoseStatus
 import com.hormonelog.core.domain.Drug
+import com.hormonelog.core.domain.Route
 import java.time.Instant
 import java.time.ZoneId
 
@@ -35,6 +38,9 @@ class DashboardActions(
     val onOpenLab: () -> Unit,
     val onCloseSheet: () -> Unit,
     val onEditDose: ((DoseDraft) -> DoseDraft) -> Unit,
+    val onSetDoseDrug: (Drug) -> Unit,
+    val onSetDoseRoute: (Route) -> Unit,
+    val onSetDoseStatus: (DoseStatus) -> Unit,
     val onStepDose: (Boolean) -> Unit,
     val onSetDoseAmount: (String) -> Unit,
     val onSaveDose: () -> Unit,
@@ -54,6 +60,8 @@ class DashboardActions(
     val onFocusLab: (LabField) -> Unit,
     val onKeyLab: (String) -> Unit,
     val onSaveLab: () -> Unit,
+    val onBeginEditDose: (java.util.UUID) -> Unit,
+    val onBeginEditLab: (java.util.UUID) -> Unit,
     val onDeleteDose: (java.util.UUID) -> Unit,
     val onDeleteLab: (java.util.UUID) -> Unit,
     val onDeleteRegimen: (java.util.UUID) -> Unit,
@@ -65,6 +73,9 @@ class DashboardActions(
     val onScrub: (Float?) -> Unit,
     val onFilter: (TimelineFilter) -> Unit,
     val onDismissToast: () -> Unit,
+    val onUndo: () -> Unit,
+    val onConfirmDuplicate: () -> Unit,
+    val onCancelDuplicate: () -> Unit,
 )
 
 @Composable
@@ -76,7 +87,7 @@ fun DashboardScreen(
     modifier: Modifier = Modifier,
 ) {
     val lastEstrogenDose: DoseEvent? = state.doses
-        .filter { it.drug != Drug.SPIRONOLACTONE && it.drug != Drug.CYPROTERONE && it.status != DoseStatus.SKIPPED }
+        .filter { it.drug != Drug.SPIRONOLACTONE && it.drug != Drug.CYPROTERONE && it.status.wasTaken }
         .maxByOrNull { it.occurredAt }
 
     // System back closes the topmost overlay before leaving the app.
@@ -104,6 +115,8 @@ fun DashboardScreen(
                         state = state, now = now, zone = zone, onFilter = actions.onFilter,
                         onDeleteDose = actions.onDeleteDose,
                         onDeleteLab = actions.onDeleteLab,
+                        onEditDose = actions.onBeginEditDose,
+                        onEditLab = actions.onBeginEditLab,
                     )
                     DashboardTab.FLOW -> FlowScreen(
                         state = state, now = now, zone = zone,
@@ -130,6 +143,7 @@ fun DashboardScreen(
 
         ToastOverlay(
             text = state.toast,
+            onUndo = state.undo?.let { actions.onUndo },
             onDismiss = actions.onDismissToast,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp),
         )
@@ -138,6 +152,9 @@ fun DashboardScreen(
             DashboardSheet.DOSE -> DoseSheet(
                 draft = state.doseDraft, now = now, zone = zone, lastDose = lastEstrogenDose,
                 onEdit = actions.onEditDose,
+                onSetDrug = actions.onSetDoseDrug,
+                onSetRoute = actions.onSetDoseRoute,
+                onSetStatus = actions.onSetDoseStatus,
                 onStep = actions.onStepDose,
                 onSetAmount = actions.onSetDoseAmount,
                 onClose = actions.onCloseSheet,
@@ -157,6 +174,19 @@ fun DashboardScreen(
             DashboardSheet.NONE -> Unit
         }
 
+        // A same-drug record within a few hours is nearly always a re-tap, so the save
+        // waits here rather than quietly doubling the dose the curve engine sees.
+        state.duplicateDose?.let { dup ->
+            ConfirmDialog(
+                title = "이미 비슷한 시각에 기록이 있어요",
+                body = "${fmtDate(dup.occurredAt, zone)} ${fmtTime(dup.occurredAt, zone)} 에 ${dup.drug.label} " +
+                    "${trimDose(dup.amountEntered)}${dup.enteredUnit.label} 기록이 있어요. 그래도 새로 기록할까요?",
+                confirmLabel = "그래도 기록",
+                onConfirm = actions.onConfirmDuplicate,
+                onDismiss = actions.onCancelDuplicate,
+            )
+        }
+
         if (state.clinicsOpen) {
             ClinicsScreen(
                 clinics = state.clinics,
@@ -173,3 +203,5 @@ fun DashboardScreen(
         }
     }
 }
+
+private fun trimDose(v: Double): String = if (v % 1.0 == 0.0) v.toInt().toString() else v.toString()

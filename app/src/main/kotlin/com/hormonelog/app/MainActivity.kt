@@ -32,6 +32,9 @@ class MainActivity : ComponentActivity() {
                         onOpenLab = { vm.openSheet(DashboardSheet.LAB) },
                         onCloseSheet = vm::closeSheet,
                         onEditDose = vm::editDose,
+                        onSetDoseDrug = vm::setDoseDrug,
+                        onSetDoseRoute = vm::setDoseRoute,
+                        onSetDoseStatus = vm::setDoseStatus,
                         onStepDose = vm::stepDose,
                         onSetDoseAmount = vm::setDoseAmount,
                         onSaveDose = { vm.saveDose(now) },
@@ -51,6 +54,8 @@ class MainActivity : ComponentActivity() {
                         onFocusLab = vm::focusLabField,
                         onKeyLab = vm::pressKey,
                         onSaveLab = { vm.saveLab(now) },
+                        onBeginEditDose = vm::beginEditDose,
+                        onBeginEditLab = vm::beginEditLab,
                         onDeleteDose = vm::deleteDose,
                         onDeleteLab = vm::deleteLab,
                         onDeleteRegimen = vm::deleteRegimen,
@@ -62,6 +67,9 @@ class MainActivity : ComponentActivity() {
                         onScrub = vm::setScrub,
                         onFilter = vm::setTimelineFilter,
                         onDismissToast = vm::dismissToast,
+                        onUndo = vm::undoLast,
+                        onConfirmDuplicate = { vm.saveDose(now, force = true) },
+                        onCancelDuplicate = vm::cancelDuplicate,
                     ),
                 )
             }

@@ -1,6 +1,7 @@
 package com.hormonelog.app.feature.common
 
 import com.hormonelog.core.domain.Assay
+import com.hormonelog.core.domain.DoseStatus
 import com.hormonelog.core.domain.DoseUnit
 import com.hormonelog.core.domain.Drug
 import com.hormonelog.core.domain.PrescriptionBasis
@@ -30,6 +31,25 @@ val Route.label: String
         Route.IM_INJECTION -> "근육주사(IM)"
         Route.SC_INJECTION -> "피하주사(SC)"
     }
+
+val DoseStatus.label: String
+    get() = when (this) {
+        DoseStatus.ADMINISTERED -> "투약함"
+        DoseStatus.DELAYED -> "늦게 투약"
+        DoseStatus.SKIPPED -> "놓침"
+        DoseStatus.CORRECTED -> "정정됨"
+    }
+
+val DoseStatus.hint: String
+    get() = when (this) {
+        DoseStatus.ADMINISTERED -> "예정대로 맞았어요"
+        DoseStatus.DELAYED -> "늦었지만 맞았어요 · 곡선에 그대로 반영돼요"
+        DoseStatus.SKIPPED -> "건너뛰었어요 · 곡선에서 빠져요"
+        DoseStatus.CORRECTED -> "기록을 정정했어요"
+    }
+
+/** Statuses the recorder offers; CORRECTED comes from editing, never from a chip. */
+val DOSE_STATUS_CHOICES = listOf(DoseStatus.ADMINISTERED, DoseStatus.DELAYED, DoseStatus.SKIPPED)
 
 val DoseUnit.label: String
     get() = when (this) {

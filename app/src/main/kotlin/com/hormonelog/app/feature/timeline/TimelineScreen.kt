@@ -47,6 +47,8 @@ fun TimelineScreen(
     onFilter: (TimelineFilter) -> Unit,
     onDeleteDose: (UUID) -> Unit = {},
     onDeleteLab: (UUID) -> Unit = {},
+    onEditDose: (UUID) -> Unit = {},
+    onEditLab: (UUID) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val entries = timelineEntries(state, now, zone, withMethod = true)
@@ -94,7 +96,14 @@ fun TimelineScreen(
                             modifier = Modifier.padding(start = 2.dp),
                         )
                         group.items.forEach { item ->
-                            TimelineItemRow(item, onDelete = { pendingDelete = item })
+                            TimelineItemRow(
+                                item,
+                                onEdit = {
+                                    val id = UUID.fromString(item.id)
+                                    if (item.kind == TimelineKind.LAB) onEditLab(id) else onEditDose(id)
+                                },
+                                onDelete = { pendingDelete = item },
+                            )
                         }
                     }
                 }

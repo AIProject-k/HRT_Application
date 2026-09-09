@@ -14,6 +14,7 @@ import com.hormonelog.core.domain.LabResult
 import com.hormonelog.core.domain.Regimen
 import com.hormonelog.core.domain.Route
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -80,5 +81,45 @@ class RecordStoreTest {
         val store = store()
         store.save(s)
         assertEquals(s, store.load())
+    }
+
+    @Test
+    fun labWithoutACollectionTimeSurvivesTheRoundTrip() {
+        // The recorder can now save "채혈 시각 모름", so null has to come back as null
+        // rather than as a guessed instant that would then look eligible for calibration.
+        val s = RecordStore.Snapshot(
+            labs = listOf(
+                LabResult(
+                    UUID.randomUUID(), null, null, Assay.UNKNOWN,
+                    listOf(LabAnalyteValue(Analyte.ESTRADIOL, 412.0, "pg/mL", 412.0)),
+                ),
+            ),
+        )
+        val store = store()
+        store.save(s)
+        assertEquals(s, store.load())
+        assertNull(store.load().labs.single().collectedAt)
+    }
+
+    @Test
+    fun aSkippedOrLateDoseKeepsItsStatus() {
+        val at = Instant.parse("2026-07-01T09:00:00Z")
+        val s = RecordStore.Snapshot(
+            doses = listOf(
+                DoseEvent(
+                    UUID.randomUUID(), at, "Asia/Seoul", Drug.ESTRADIOL_VALERATE,
+                    Route.IM_INJECTION, 10.0, DoseUnit.MG, 10.0, DoseStatus.SKIPPED,
+                ),
+                DoseEvent(
+                    UUID.randomUUID(), at.plusSeconds(3600), "Asia/Seoul", Drug.CYPROTERONE,
+                    Route.ORAL, 25.0, DoseUnit.MG, 25.0, DoseStatus.DELAYED,
+                ),
+            ),
+        )
+        val store = store()
+        store.save(s)
+        val back = store.load().doses
+        assertEquals(DoseStatus.SKIPPED, back[0].status)
+        assertEquals(DoseStatus.DELAYED, back[1].status)
     }
 }

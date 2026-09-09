@@ -149,7 +149,7 @@ data class HomeSummary(val e2Now: String, val nextDose: String, val lastLab: Str
 
 fun homeSummary(state: DashboardState, now: Instant): HomeSummary {
     val estrogenDoses = state.doses.filter {
-        !it.drug.isAntiandrogen && it.status != DoseStatus.SKIPPED
+        !it.drug.isAntiandrogen && it.status.wasTaken
     }
     val lastDose = estrogenDoses.maxByOrNull { it.occurredAt }
     // Prefer an active estrogen regimen's interval; otherwise assume weekly.
