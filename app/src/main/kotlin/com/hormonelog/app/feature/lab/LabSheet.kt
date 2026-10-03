@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +54,7 @@ import java.time.ZoneId
 import kotlin.math.roundToInt
 
 private val LAB_TIME_CHOICES = listOf(
-    LabTimeChoice.NOW to "방금 받음",
+    LabTimeChoice.NOW to "방금 채혈",
     LabTimeChoice.THIS_MORNING to "오늘 오전",
     LabTimeChoice.YESTERDAY to "어제",
 )
@@ -112,6 +113,7 @@ fun LabSheet(
                 value = draft.e2,
                 unit = draft.e2Unit,
                 focused = draft.focus == LabField.E2,
+                error = draft.e2Error,
                 onClick = { onFocus(LabField.E2) },
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -130,24 +132,38 @@ fun LabSheet(
                 value = draft.tt,
                 unit = "ng/dL",
                 focused = draft.focus == LabField.TT,
+                error = draft.ttError,
                 onClick = { onFocus(LabField.TT) },
             )
 
             FieldBlock("채혈 시간") {
                 Text("결과를 받은 시간이 아니라, 피를 뽑은 시간이에요", style = HlType.Caption, color = HlColor.TextDim)
+                OutlinedButton(
+                    onClick = { pickingDate = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(13.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            if (draft.time == LabTimeChoice.CUSTOM) "날짜·시간 변경" else "날짜·시간 직접 선택",
+                            style = HlType.LabelStrong,
+                            color = HlColor.Yellow,
+                        )
+                        Text(
+                            resolved?.let { "${it.atZone(zone).year}년 ${fmtDate(it, zone)} ${fmtTime(it, zone)}" }
+                                ?: "달력에서 날짜를 고른 뒤 시간을 선택해 주세요",
+                            style = HlType.BodySm,
+                            color = HlColor.TextPrimary,
+                        )
+                    }
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     LAB_TIME_CHOICES.forEach { (choice, lbl) ->
                         HlChip(lbl, draft.time == choice, { onEdit { it.copy(time = choice) } })
                     }
-                    HlChip(
-                        label = if (draft.time == LabTimeChoice.CUSTOM && resolved != null) {
-                            "${fmtDate(resolved, zone)} ${fmtTime(resolved, zone)}"
-                        } else {
-                            "날짜 선택"
-                        },
-                        selected = draft.time == LabTimeChoice.CUSTOM,
-                        onClick = { pickingDate = true },
-                    )
                     HlChip("시각 모름", draft.time == LabTimeChoice.UNKNOWN, {
                         onEdit { it.copy(time = LabTimeChoice.UNKNOWN) }
                     })
@@ -216,6 +232,7 @@ fun LabSheet(
 
         SheetFooter(
             label = when {
+                draft.e2Error != null || draft.ttError != null -> "입력값을 확인해 주세요"
                 !canSave -> "E2 또는 Total T를 입력해 주세요"
                 editing -> "검사 결과 수정 저장"
                 else -> "검사 결과 저장"
@@ -229,7 +246,7 @@ fun LabSheet(
 
     if (pickingDate) {
         DateTimePickerDialog(
-            seedMillis = draft.customEpochMillis ?: now.toEpochMilli(),
+            seedMillis = resolved?.toEpochMilli() ?: now.toEpochMilli(),
             zone = zone,
             onDismiss = { pickingDate = false },
             onPicked = { millis ->
@@ -247,6 +264,7 @@ private fun AnalyteField(
     value: String,
     unit: String,
     focused: Boolean,
+    error: String?,
     onClick: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -260,7 +278,7 @@ private fun AnalyteField(
                 .height(58.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(HlColor.InputSurface)
-                .border(1.5.dp, if (focused) HlColor.Yellow else HlColor.Border08, RoundedCornerShape(14.dp))
+                .border(1.5.dp, if (error != null) HlColor.Orange else if (focused) HlColor.Yellow else HlColor.Border08, RoundedCornerShape(14.dp))
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -273,6 +291,7 @@ private fun AnalyteField(
             )
             Text(unit, style = HlType.LabelStrong, color = HlColor.TextMuted)
         }
+        error?.let { Text(it, style = HlType.Caption, color = HlColor.Orange) }
     }
 }
 

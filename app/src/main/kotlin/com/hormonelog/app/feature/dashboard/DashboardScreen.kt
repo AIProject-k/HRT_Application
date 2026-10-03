@@ -100,6 +100,13 @@ fun DashboardScreen(
     val lastEstrogenDose: DoseEvent? = state.doses
         .filter { it.drug != Drug.SPIRONOLACTONE && it.drug != Drug.CYPROTERONE && it.status.wasTaken }
         .maxByOrNull { it.occurredAt }
+    val collectedAt = resolveLabTime(state.labDraft.time, now, zone, state.labDraft.customEpochMillis)
+    val lastDoseBeforeLab = collectedAt?.let { time ->
+        state.doses.filter {
+            it.drug != Drug.SPIRONOLACTONE && it.drug != Drug.CYPROTERONE && it.status.wasTaken &&
+                !it.occurredAt.isAfter(time)
+        }.maxByOrNull { it.occurredAt }
+    }
 
     // System back closes the topmost overlay before leaving the app.
     BackHandler(enabled = state.clinicDraft != null || state.clinicsOpen || state.sheet != DashboardSheet.NONE) {
@@ -175,7 +182,7 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxSize().systemBarsPadding(),
             )
             DashboardSheet.LAB -> LabSheet(
-                draft = state.labDraft, now = now, zone = zone, lastDose = lastEstrogenDose,
+                draft = state.labDraft, now = now, zone = zone, lastDose = lastDoseBeforeLab,
                 onEdit = actions.onEditLab,
                 onFocus = actions.onFocusLab,
                 onKey = actions.onKeyLab,

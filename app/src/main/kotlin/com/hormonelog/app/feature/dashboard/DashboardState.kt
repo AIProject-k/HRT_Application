@@ -108,7 +108,10 @@ data class LabDraft(
     val note: String = "",
     val focus: LabField = LabField.NONE,
 ) {
-    val canSave: Boolean get() = e2.isNotBlank() || tt.isNotBlank()
+    val e2Error: String? get() = labValueError(e2)
+    val ttError: String? get() = labValueError(tt)
+    val canSave: Boolean
+        get() = (e2.isNotBlank() || tt.isNotBlank()) && e2Error == null && ttError == null
 
     companion object {
         fun of(l: LabResult): LabDraft {
@@ -125,6 +128,16 @@ data class LabDraft(
                 note = l.note.orEmpty(),
             )
         }
+    }
+}
+
+private fun labValueError(text: String): String? {
+    if (text.isBlank()) return null
+    val value = text.toDoubleOrNull()
+    return when {
+        value == null || !value.isFinite() -> "올바른 숫자를 입력해 주세요"
+        value < 0 -> "0 이상의 값을 입력해 주세요"
+        else -> null
     }
 }
 
@@ -584,7 +597,9 @@ object DashboardReducer {
         val current = if (field == LabField.E2) s.labDraft.e2 else s.labDraft.tt
         val next = when {
             key == "⌫" -> current.dropLast(1)
+            key == "." && current.contains('.') -> current
             current.length >= 6 -> current
+            key == "." && current.isEmpty() -> "0."
             else -> current + key
         }
         return editLab(s) { if (field == LabField.E2) it.copy(e2 = next) else it.copy(tt = next) }

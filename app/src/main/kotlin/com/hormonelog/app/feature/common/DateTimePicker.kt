@@ -37,7 +37,7 @@ fun DateTimePickerDialog(
     val date = pickedDateMillis
 
     if (date == null) {
-        val dateState = rememberDatePickerState(initialSelectedDateMillis = seedMillis)
+        val dateState = rememberDatePickerState(initialSelectedDateMillis = datePickerSeedMillis(seedMillis, zone))
         DatePickerDialog(
             onDismissRequest = onDismiss,
             confirmButton = {
@@ -58,14 +58,20 @@ fun DateTimePickerDialog(
             onDismissRequest = onDismiss,
             confirmButton = {
                 TextButton(onClick = {
-                    val day = Instant.ofEpochMilli(date).atZone(ZoneOffset.UTC).toLocalDate()
-                    val millis = LocalDateTime.of(day, LocalTime.of(timeState.hour, timeState.minute))
-                        .atZone(zone).toInstant().toEpochMilli()
-                    onPicked(millis)
+                    onPicked(datePickerResultMillis(date, timeState.hour, timeState.minute, zone))
                 }) { Text("확인") }
             },
             dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
             text = { TimePicker(state = timeState) },
         )
     }
+}
+
+internal fun datePickerSeedMillis(seedMillis: Long, zone: ZoneId): Long =
+    Instant.ofEpochMilli(seedMillis).atZone(zone).toLocalDate()
+        .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+internal fun datePickerResultMillis(dateMillis: Long, hour: Int, minute: Int, zone: ZoneId): Long {
+    val day = Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate()
+    return LocalDateTime.of(day, LocalTime.of(hour, minute)).atZone(zone).toInstant().toEpochMilli()
 }

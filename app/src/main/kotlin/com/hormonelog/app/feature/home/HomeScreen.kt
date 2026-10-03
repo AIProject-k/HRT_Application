@@ -62,7 +62,7 @@ fun HomeScreen(
         computeCurves(state.doses, state.regimens, state.labs, now, window.first, window.second)
     }
     val e2Now = remember(state.doses, state.labs, now) { e2MedianAt(state.doses, state.labs, now) }
-    val summary = homeSummary(state, now).copy(
+    val summary = homeSummary(state, now, zone).copy(
         e2Now = e2Now?.let { it.toInt().toString() } ?: "—",
     )
     val model = CalibrationStatus.of(curves.cal.includedLabIds.size, curves.cal.exposureScale, curves.canEstimate)

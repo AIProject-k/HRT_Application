@@ -50,7 +50,6 @@ private val ME_ROWS = listOf(
     // No 앱 잠금 row: nothing implements a lock, and a settings row reading "켜짐"
     // told the user their records were protected when they were not.
     MeRow("🔒", "기기 안에만 저장", "서버 업로드 없음 · 계정 불필요 · 자동 백업 꺼짐", "켜짐"),
-    MeRow("⬇️", "데이터 내보내기", "CSV로 저장해 진료 때 보여주기", "›"),
     MeRow("🔤", "언어", "한국어 · English (준비 중)", "한국어"),
     MeRow("🌙", "화면", "다크 모드 · 큰 글자", "다크"),
 )

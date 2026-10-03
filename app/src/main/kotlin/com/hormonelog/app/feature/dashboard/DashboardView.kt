@@ -6,6 +6,7 @@ import com.hormonelog.core.domain.Analyte
 import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.DoseStatus
 import com.hormonelog.core.domain.LabResult
+import com.hormonelog.core.domain.LabAnalyteValue
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
@@ -54,7 +55,9 @@ fun LabResult.reported(analyte: Analyte): Double? =
     analytes.firstOrNull { it.analyte == analyte }?.reportedValue
 
 fun LabResult.canonical(analyte: Analyte): Double? =
-    analytes.firstOrNull { it.analyte == analyte }?.let { it.canonicalValue ?: it.reportedValue }
+    analytes.firstOrNull { it.analyte == analyte }?.let {
+        it.canonicalValue ?: LabAnalyteValue.canonical(analyte, it.reportedValue, it.reportedUnit)
+    }
 
 private fun DoseEvent.amountLabel(): String = buildString {
     append(if (amountEntered % 1.0 == 0.0) amountEntered.toInt().toString() else amountEntered.toString())
@@ -78,11 +81,11 @@ data class TimelineEntry(
 data class TimelineGroup(val dateLabel: String, val items: List<TimelineEntry>)
 
 private fun labSubtitle(lab: LabResult, withMethod: Boolean): String {
-    val e2 = lab.reported(Analyte.ESTRADIOL)
-    val tt = lab.reported(Analyte.TOTAL_TESTOSTERONE)
+    val e2 = lab.analytes.firstOrNull { it.analyte == Analyte.ESTRADIOL }
+    val tt = lab.analytes.firstOrNull { it.analyte == Analyte.TOTAL_TESTOSTERONE }
     val parts = buildList {
-        if (e2 != null) add("E2 ${trimNum(e2)} pg/mL")
-        if (tt != null) add("Total T ${trimNum(tt)} ng/dL")
+        if (e2 != null) add("E2 ${trimNum(e2.reportedValue)} ${e2.reportedUnit}")
+        if (tt != null) add("Total T ${trimNum(tt.reportedValue)} ${tt.reportedUnit}")
     }
     var s = parts.joinToString(" · ")
     if (withMethod) {
@@ -93,6 +96,9 @@ private fun labSubtitle(lab: LabResult, withMethod: Boolean): String {
 }
 
 private fun trimNum(v: Double): String = if (v % 1.0 == 0.0) v.toInt().toString() else v.toString()
+
+private fun recordDate(instant: Instant, zone: ZoneId): String =
+    "${instant.atZone(zone).year}년 ${fmtDate(instant, zone)}"
 
 fun timelineEntries(state: DashboardState, now: Instant, zone: ZoneId, withMethod: Boolean): List<TimelineEntry> {
     val doseEntries = state.doses.map { d ->
@@ -106,7 +112,7 @@ fun timelineEntries(state: DashboardState, now: Instant, zone: ZoneId, withMetho
                 d.note?.let { append(" · $it") }
             },
             timeText = fmtTime(d.occurredAt, zone),
-            dateKey = fmtDate(d.occurredAt, zone),
+            dateKey = recordDate(d.occurredAt, zone),
             agoText = ago(d.occurredAt, now),
             isNew = d.id.toString() in state.newIds,
         ).let { it to d.occurredAt }
@@ -119,7 +125,7 @@ fun timelineEntries(state: DashboardState, now: Instant, zone: ZoneId, withMetho
             title = "혈액검사 결과",
             subtitle = labSubtitle(l, withMethod),
             timeText = l.collectedAt?.let { fmtTime(it, zone) } ?: "",
-            dateKey = l.collectedAt?.let { fmtDate(it, zone) } ?: "시간 미상",
+            dateKey = l.collectedAt?.let { recordDate(it, zone) } ?: "시간 미상",
             agoText = l.collectedAt?.let { ago(it, now) } ?: "",
             isNew = l.id.toString() in state.newIds,
         ).let { it to t }
@@ -147,20 +153,31 @@ fun timelineGroups(entries: List<TimelineEntry>, filter: TimelineFilter): List<T
 // ── home ─────────────────────────────────────────────────────
 data class HomeSummary(val e2Now: String, val nextDose: String, val lastLab: String)
 
-fun homeSummary(state: DashboardState, now: Instant): HomeSummary {
-    val estrogenDoses = state.doses.filter {
-        !it.drug.isAntiandrogen && it.status.wasTaken
+fun homeSummary(state: DashboardState, now: Instant, zone: ZoneId = ZoneId.systemDefault()): HomeSummary {
+    val schedules = state.regimens.filter {
+        it.active && !it.drug.isAntiandrogen && it.endAt?.isBefore(now) != true
     }
-    val lastDose = estrogenDoses.maxByOrNull { it.occurredAt }
-    // Prefer an active estrogen regimen's interval; otherwise assume weekly.
-    val intervalDays = state.regimens
-        .firstOrNull { it.active && !it.drug.isAntiandrogen }
-        ?.everyDays ?: 7
-    val nextDose = if (lastDose == null) {
-        "기록 없음"
-    } else {
-        val nextDays = ((lastDose.occurredAt.plus(intervalDays.toLong(), ChronoUnit.DAYS).toEpochMilli() - now.toEpochMilli()) / 86_400_000.0).roundToInt()
-        if (nextDays <= 0) "오늘" else "${nextDays}일 뒤"
+    val due = schedules.mapNotNull { schedule ->
+        val lastDose = state.doses.filter {
+            it.drug == schedule.drug && it.route == schedule.route && it.status.wasTaken &&
+                !it.occurredAt.isBefore(schedule.startAt) && !it.occurredAt.isAfter(now)
+        }.maxByOrNull { it.occurredAt }
+        val next = lastDose?.occurredAt?.plus(schedule.everyDays.coerceAtLeast(1).toLong(), ChronoUnit.DAYS)
+            ?: schedule.startAt
+        next.takeIf { schedule.endAt?.isBefore(it) != true }
+    }.minOrNull()
+    val nextDose = when {
+        schedules.isEmpty() -> "일정 미설정"
+        due == null -> "남은 일정 없음"
+        else -> {
+            val days = ChronoUnit.DAYS.between(now.atZone(zone).toLocalDate(), due.atZone(zone).toLocalDate())
+            when {
+                days < 0 -> "${-days}일 지남"
+                days > 0 -> "${days}일 뒤"
+                due.isBefore(now) -> "예정 시각 지남"
+                else -> "오늘"
+            }
+        }
     }
     val lastLab = state.labs.mapNotNull { it.collectedAt }.maxOrNull()
     return HomeSummary(
@@ -175,11 +192,11 @@ fun nearestLabWithin(state: DashboardState, t: Instant, series: HormoneSeries, h
     val analyte = if (series == HormoneSeries.E2) Analyte.ESTRADIOL else Analyte.TOTAL_TESTOSTERONE
     val unit = if (series == HormoneSeries.E2) "pg/mL" else "ng/dL"
     val match = state.labs
-        .filter { it.collectedAt != null && it.reported(analyte) != null }
+        .filter { it.collectedAt != null && it.canonical(analyte) != null }
         .minByOrNull { abs((it.collectedAt!!.toEpochMilli() - t.toEpochMilli())) }
         ?: return null
     val within = abs(match.collectedAt!!.toEpochMilli() - t.toEpochMilli()) <= hours * 3_600_000
     if (!within) return null
-    val v = match.reported(analyte)!!
+    val v = match.canonical(analyte)!!
     return v to "같은 날 실측 ${trimNum(v)} $unit"
 }
