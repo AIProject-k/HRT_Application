@@ -1,385 +1,220 @@
 package com.hormonelog.app.feature.me
 
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.runtime.remember
+import com.hormonelog.app.analysis.HomeLogic
+import com.hormonelog.app.feature.common.Fmt
 import com.hormonelog.app.feature.common.label
-import com.hormonelog.app.feature.dashboard.CalibrationStatus
-import com.hormonelog.app.feature.dashboard.DashboardState
-import com.hormonelog.app.feature.flow.chartWindow
-import com.hormonelog.app.feature.flow.computeCurves
-import com.hormonelog.app.ui.components.ConfirmDialog
-import com.hormonelog.app.ui.components.Disclaimer
-import com.hormonelog.app.ui.components.HlCard
-import com.hormonelog.app.ui.theme.HlColor
-import com.hormonelog.app.ui.theme.HlType
-import com.hormonelog.core.domain.Regimen
-import java.util.UUID
+import com.hormonelog.app.state.AppState
+import com.hormonelog.app.state.plainNumber
+import com.hormonelog.app.ui.kit.HlButton
+import com.hormonelog.app.ui.kit.HlButtonKind
+import com.hormonelog.app.ui.kit.HlDivider
+import com.hormonelog.app.ui.kit.HlMenuItem
+import com.hormonelog.app.ui.kit.HlSectionLabel
+import com.hormonelog.app.ui.kit.HlSegmented
+import com.hormonelog.app.ui.kit.HlSettingRow
+import com.hormonelog.app.ui.kit.HlSheet
+import com.hormonelog.app.ui.kit.HlSheetTitle
+import com.hormonelog.app.ui.kit.HlTopBar
+import com.hormonelog.app.ui.kit.ScreenScroll
+import com.hormonelog.app.ui.kit.ScreenTitle
+import com.hormonelog.app.ui.kit.SegItem
+import com.hormonelog.app.ui.theme.Hl
+import com.hormonelog.app.ui.theme.HlRadius
+import com.hormonelog.app.ui.theme.HlSize
+import com.hormonelog.app.ui.theme.HlText
+import com.hormonelog.core.domain.Analyte
+import com.hormonelog.core.domain.E2Unit
+import com.hormonelog.core.domain.FontScale
+import com.hormonelog.core.domain.GonadalStatus
+import com.hormonelog.core.domain.TUnit
+import com.hormonelog.core.domain.ThemeMode
+import com.hormonelog.core.evidence.EvidenceBundleV1
 
-private data class MeRow(val icon: String, val title: String, val sub: String, val value: String)
-
-private val ME_ROWS = listOf(
-    // No 앱 잠금 row: nothing implements a lock, and a settings row reading "켜짐"
-    // told the user their records were protected when they were not.
-    MeRow("🔒", "기기 안에만 저장", "서버 업로드 없음 · 계정 불필요 · 자동 백업 꺼짐", "켜짐"),
-    MeRow("🔤", "언어", "한국어 · English (준비 중)", "한국어"),
-    MeRow("🌙", "화면", "다크 모드 · 큰 글자", "다크"),
+class MeActions(
+    val theme: (ThemeMode) -> Unit,
+    val fontScale: (FontScale) -> Unit,
+    val englishNotReady: () -> Unit,
+    val e2Unit: (E2Unit) -> Unit,
+    val tUnit: (TUnit) -> Unit,
+    val clock24: (Boolean) -> Unit,
+    val gonadal: () -> Unit,
+    val baseline: () -> Unit,
+    val schedules: () -> Unit,
+    val notifications: () -> Unit,
+    val memos: () -> Unit,
+    val records: () -> Unit,
+    val report: () -> Unit,
+    val security: () -> Unit,
+    val evidence: () -> Unit,
+    val licenses: () -> Unit,
+    val deleteAll: () -> Unit,
 )
 
-private sealed interface MePending {
-    data class RegimenDelete(val id: UUID, val label: String) : MePending
-    data object ClearDoses : MePending
-    data object ClearLabs : MePending
-    data object ClearAll : MePending
-}
-
-private fun Regimen.summary(): String {
-    val amt = if (amountEntered % 1.0 == 0.0) amountEntered.toInt().toString() else amountEntered.toString()
-    val every = if (everyDays == 1) "매일" else "${everyDays}일마다"
-    return "${drug.label} · ${route.label} ${amt}${enteredUnit.label} · $every"
-}
-
 @Composable
-fun MeScreen(
-    state: DashboardState,
-    now: java.time.Instant,
-    onLoadSample: () -> Unit,
-    onOpenClinics: () -> Unit,
-    onImportCsv: (String) -> Unit,
-    exportCsvText: () -> String,
-    onDeleteRegimen: (UUID) -> Unit = {},
-    onClearDoses: () -> Unit = {},
-    onClearLabs: () -> Unit = {},
-    onClearAll: () -> Unit = {},
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    var pending by remember { mutableStateOf<MePending?>(null) }
+fun MeScreen(s: AppState, fmt: Fmt, appVersion: String, actions: MeActions) {
+    val c = Hl.colors
+    val settings = s.settings
+    val baselineLab = s.labs.filter { it.isBaseline }.maxByOrNull { it.collectedAt ?: java.time.Instant.MIN }
+    val running = s.regimens.count { it.isRunningAt(fmt.now) }
+    val nudge = HomeLogic.backupNudgeDays(settings.copy(backupBannerHiddenUntilMillis = null), true, fmt.now)
 
-    when (val p = pending) {
-        is MePending.RegimenDelete -> ConfirmDialog(
-            title = "반복 일정 삭제",
-            body = "${p.label}\n\n반복 일정만 지워요. 이미 타임라인에 쌓인 투약 기록은 그대로 남아요.",
-            onConfirm = { onDeleteRegimen(p.id) },
-            onDismiss = { pending = null },
-        )
-        MePending.ClearDoses -> ConfirmDialog(
-            title = "투약 기록 전체 삭제",
-            body = "투약 기록 ${state.doses.size}건을 모두 삭제할까요? 되돌릴 수 없어요.",
-            onConfirm = onClearDoses,
-            onDismiss = { pending = null },
-        )
-        MePending.ClearLabs -> ConfirmDialog(
-            title = "검사 결과 전체 삭제",
-            body = "검사 결과 ${state.labs.size}건을 모두 삭제할까요? 되돌릴 수 없어요.",
-            onConfirm = onClearLabs,
-            onDismiss = { pending = null },
-        )
-        MePending.ClearAll -> ConfirmDialog(
-            title = "전체 초기화",
-            body = "투약 ${state.doses.size}건 · 검사 ${state.labs.size}건 · 반복 일정 ${state.regimens.size}개를 모두 삭제할까요? 병원 메모는 남아요. 되돌릴 수 없어요.",
-            onConfirm = onClearAll,
-            onDismiss = { pending = null },
-        )
-        null -> Unit
-    }
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            val text = runCatching {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            }.getOrNull()
-            if (text.isNullOrBlank()) {
-                Toast.makeText(context, "파일을 읽지 못했어요", Toast.LENGTH_SHORT).show()
-            } else {
-                onImportCsv(text)
-            }
-        }
-    }
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(exportCsvText()) }
-            }.onSuccess { Toast.makeText(context, "CSV로 저장했어요", Toast.LENGTH_SHORT).show() }
-                .onFailure { Toast.makeText(context, "저장 실패", Toast.LENGTH_SHORT).show() }
-        }
-    }
-    val window = remember(now) { chartWindow(30, now) }
-    val curves = remember(state.doses, state.regimens, state.labs, now) {
-        computeCurves(state.doses, state.regimens, state.labs, now, window.first, window.second)
-    }
-    val model = CalibrationStatus.of(curves.cal.includedLabIds.size, curves.cal.exposureScale, curves.canEstimate)
+    ScreenScroll(gap = 10.dp) {
+        ScreenTitle("내 정보")
 
-    Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .padding(top = 8.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text("내 정보", style = HlType.ScreenTitle, color = HlColor.TextPrimary, modifier = Modifier.padding(top = 6.dp))
-
-        HlCard(borderColor = HlColor.Border06, contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(11.dp)).background(HlColor.OrangeTintSoft),
-                    contentAlignment = Alignment.Center,
-                ) { Text("◐", fontSize = 16.sp, color = HlColor.Orange) }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(model.title, style = HlType.CardTitleLg, color = HlColor.Orange)
-                    Text("모델 상태", style = HlType.BodySm, color = HlColor.TextMuted)
+        Section("화면") {
+            Column(Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Setting("테마") {
+                    HlSegmented(
+                        listOf(SegItem(ThemeMode.DARK, "다크"), SegItem(ThemeMode.LIGHT, "라이트"), SegItem(ThemeMode.SYSTEM, "시스템")),
+                        settings.themeMode, actions.theme,
+                    )
                 }
-            }
-            Text(model.detail, style = HlType.Body, color = HlColor.TextSecondary)
-
-            // No progress bar: there is no fixed number of labs that completes anything,
-            // so a filling bar would promise a finish line the model does not have.
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("보정 근거", style = HlType.Label, color = HlColor.TextMuted)
-                    Text(model.progressLabel, style = HlType.Label, color = HlColor.Orange)
+                Setting("글자 크기", hint = "시스템 글꼴 크기와 함께 적용돼요") {
+                    HlSegmented(
+                        listOf(SegItem(FontScale.DEFAULT, "기본"), SegItem(FontScale.LARGE, "크게"), SegItem(FontScale.LARGEST, "아주 크게")),
+                        settings.fontScale, actions.fontScale,
+                    )
                 }
-                Text(model.nextStep, style = HlType.Caption, color = HlColor.TextDim)
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
-                model.steps.forEach { step ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 1.dp)
-                                .size(17.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(if (step.done || step.active) HlColor.OrangeTintSoft else HlColor.KeyAlt),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                if (step.done) "✓" else (step.index + 1).toString(),
-                                style = HlType.Badge.copy(fontSize = 9.5.sp),
-                                color = if (step.done || step.active) HlColor.Orange else HlColor.TextDim,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text(
-                                step.title,
-                                style = HlType.LabelStrong.copy(fontSize = 12.5.sp),
-                                color = if (step.done || step.active) HlColor.TextBright else HlColor.TextDim,
-                            )
-                            Text(step.subtitle, style = HlType.Caption, color = HlColor.TextDim)
-                        }
-                    }
+                Setting("언어", hint = "English는 준비 중이에요") {
+                    HlSegmented(listOf(SegItem("ko", "한국어"), SegItem("en", "English")), "ko", { if (it == "en") actions.englishNotReady() })
                 }
             }
         }
 
-        // settings rows (display-only in this build)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(HlColor.Card)
-                .border(1.dp, HlColor.Border06, RoundedCornerShape(18.dp)),
-        ) {
-            ME_ROWS.forEachIndexed { i, row ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 15.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(11.dp),
-                ) {
-                    Text(row.icon, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.width(20.dp))
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(row.title, style = HlType.CardTitle.copy(fontSize = 13.sp), color = HlColor.TextPrimary)
-                        Text(row.sub, style = HlType.Caption, color = HlColor.TextDim)
-                    }
-                    Text(row.value, style = HlType.Label, color = HlColor.TextDim)
-                }
-                if (i < ME_ROWS.lastIndex) {
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(HlColor.Border06))
+        Section("단위 · 시간") {
+            Column(Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Setting("E2") { HlSegmented(E2Unit.entries.map { SegItem(it, it.label) }, settings.e2Unit, actions.e2Unit) }
+                Setting("Total T", hint = "검사값을 입력할 때의 기본 단위예요. 그래프와 예상값은 pg/mL · ng/dL로 보여요.") { HlSegmented(TUnit.entries.map { SegItem(it, it.label) }, settings.tUnit, actions.tUnit) }
+                Setting("시간 형식") {
+                    HlSegmented(listOf(SegItem(false, "12시간"), SegItem(true, "24시간")), settings.clock24, actions.clock24)
                 }
             }
         }
 
-        // CSV import / export.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(HlColor.Card)
-                .border(1.dp, HlColor.Border06, RoundedCornerShape(14.dp)),
-        ) {
-            Text(
-                "CSV 불러오기",
-                style = HlType.CardTitle.copy(fontSize = 13.sp),
-                color = HlColor.Teal,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { importLauncher.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/octet-stream")) }
-                    .padding(vertical = 16.dp),
-            )
-            Box(Modifier.width(1.dp).height(48.dp).background(HlColor.Border06))
-            Text(
-                "CSV 내보내기",
-                style = HlType.CardTitle.copy(fontSize = 13.sp),
-                color = if (state.doses.isEmpty() && state.labs.isEmpty()) HlColor.TextDim else HlColor.TextPrimary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(enabled = state.doses.isNotEmpty() || state.labs.isNotEmpty()) {
-                        exportLauncher.launch("hormonelog_${now.epochSecond}.csv")
-                    }
-                    .padding(vertical = 16.dp),
-            )
-        }
-        Text(
-            "열: type,datetime,drug,route,amount,unit,e2,tt,e2_unit,assay,note  ·  type = dose/lab",
-            style = HlType.Caption,
-            color = HlColor.TextDim,
-            modifier = Modifier.padding(horizontal = 2.dp),
-        )
-
-        // 반복 일정 — list + per-item delete (records stay).
-        if (state.regimens.isNotEmpty()) {
-            Text("반복 일정", style = HlType.SectionHeader, color = HlColor.TextPrimary, modifier = Modifier.padding(top = 4.dp, start = 2.dp))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(HlColor.Card)
-                    .border(1.dp, HlColor.Border06, RoundedCornerShape(14.dp)),
-            ) {
-                state.regimens.forEachIndexed { i, r ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text(r.summary(), style = HlType.BodySm, color = HlColor.TextSecondary, modifier = Modifier.weight(1f))
-                        Text(
-                            "삭제",
-                            style = HlType.Caption,
-                            color = HlColor.TextDim,
-                            modifier = Modifier.clickable { pending = MePending.RegimenDelete(r.id, r.summary()) },
-                        )
-                    }
-                    if (i < state.regimens.lastIndex) {
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(HlColor.Border06))
-                    }
-                }
-            }
-        }
-
-        // 기록 삭제 — bulk clear with confirmation.
-        Text("기록 삭제", style = HlType.SectionHeader, color = HlColor.TextPrimary, modifier = Modifier.padding(top = 4.dp, start = 2.dp))
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(HlColor.Card)
-                .border(1.dp, HlColor.Border06, RoundedCornerShape(14.dp)),
-        ) {
-            ClearRow("투약 기록 전체 삭제", state.doses.size, enabled = state.doses.isNotEmpty()) { pending = MePending.ClearDoses }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(HlColor.Border06))
-            ClearRow("검사 결과 전체 삭제", state.labs.size, enabled = state.labs.isNotEmpty()) { pending = MePending.ClearLabs }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(HlColor.Border06))
-            ClearRow("전체 초기화 (병원 메모 제외)", state.doses.size + state.labs.size + state.regimens.size, enabled = state.doses.isNotEmpty() || state.labs.isNotEmpty() || state.regimens.isNotEmpty()) { pending = MePending.ClearAll }
-        }
-
-        // 병원 메모 — user-authored clinic notes.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(HlColor.Card)
-                .border(1.dp, HlColor.Border06, RoundedCornerShape(14.dp))
-                .clickable(onClick = onOpenClinics)
-                .padding(horizontal = 15.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(11.dp),
-        ) {
-            Text("🏥", fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.width(20.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("병원 메모", style = HlType.CardTitle.copy(fontSize = 13.sp), color = HlColor.TextPrimary)
-                Text("호르몬 처방 병원 직접 기록", style = HlType.Caption, color = HlColor.TextDim)
-            }
-            Text(
-                if (state.clinics.isEmpty()) "›" else "${state.clinics.size}곳 ›",
-                style = HlType.Label,
-                color = HlColor.TextDim,
+        Section("신체 정보") {
+            // When the user would rather not say, the Total T curve is not drawn at all, so this line must not promise a prediction.
+            val testesHint = if (settings.gonadalStatus == GonadalStatus.DECLINED) "Total T 곡선을 그리지 않아요" else "Total T 예측에 사용"
+            HlSettingRow("고환 유무", subtitle = "${settings.gonadalStatus.label} · $testesHint", onClick = actions.gonadal, minHeight = 60.dp)
+            HlDivider()
+            HlSettingRow(
+                "HRT 시작 전 검사값",
+                subtitle = baselineLab?.let { lab ->
+                    val parts = lab.analytes.map { a ->
+                        val name = if (a.analyte == Analyte.ESTRADIOL) "E2" else "T"
+                        "$name ${plainNumber(a.reportedValue)} ${a.reportedUnit}"
+                    } + listOfNotNull(lab.collectedAt?.let { fmt.date(it) }, "실측")
+                    parts.joinToString(" · ")
+                } ?: "없음 · 있으면 Total T 예측의 출발점으로 써요",
+                onClick = actions.baseline, minHeight = 60.dp,
             )
         }
 
-        // Example data — populate the app with a sample regimen for exploration.
-        Text(
-            "예시 데이터 넣기",
-            style = HlType.ButtonLabel.copy(fontSize = 14.sp),
-            color = HlColor.Teal,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(HlColor.TealTintSoft)
-                .border(1.dp, HlColor.Teal, RoundedCornerShape(14.dp))
-                .clickable(onClick = onLoadSample)
-                .padding(vertical = 14.dp),
-        )
-        Text(
-            "에스트라디올 발레레이트 IM 10mg / 2주 + 사이프로테론 경구 25mg / 매일, 2개월 전부터. 문헌 인구집단 곡선 확인용.",
-            style = HlType.Caption,
-            color = HlColor.TextDim,
-            modifier = Modifier.padding(horizontal = 2.dp),
-        )
+        Section("기록 관리") {
+            HlSettingRow("반복 일정", value = if (running > 0) "진행 중 ${running}개" else "없음", onClick = actions.schedules)
+            HlDivider()
+            HlSettingRow("알림", value = if (settings.notificationsOn > 0) "${settings.notificationsOn}개 켜짐" else "꺼짐", onClick = actions.notifications)
+            HlDivider()
+            HlSettingRow(
+                "병원 메모",
+                value = s.nextVisitMillis?.let { "다음 진료 ${fmt.date(java.time.Instant.ofEpochMilli(it))}" } ?: "${s.memos.size + s.clinics.size}건",
+                onClick = actions.memos,
+            )
+            HlDivider()
+            HlSettingRow("다른 기록 (컨디션·체중·재고)", onClick = actions.records)
+            HlDivider()
+            HlSettingRow("병원 방문용 리포트", onClick = actions.report)
+            HlDivider()
+            HlSettingRow(
+                "백업·복원·보안",
+                value = when {
+                    settings.lastBackupAtMillis == null -> if (s.hasRecords) "백업 안 함" else null
+                    nudge != null && nudge >= 0 -> "백업 ${nudge}일 전"
+                    else -> null
+                },
+                valueColor = c.orange, onClick = actions.security,
+            )
+        }
 
-        Disclaimer("호르몬로그는 기록 도구입니다. 진단·처방·용량 변경을 제안하지 않습니다.")
+        Section("정보") {
+            HlSettingRow("모델·근거 버전", value = "근거 ${EvidenceBundleV1.bundle.version}", onClick = actions.evidence)
+            HlDivider()
+            HlSettingRow("오픈소스 라이선스", onClick = actions.licenses)
+            HlDivider()
+            HlSettingRow("앱 버전", value = appVersion)
+        }
+
+        HlButton("모든 기록 삭제", actions.deleteAll, Modifier.fillMaxWidth().padding(top = 6.dp), kind = HlButtonKind.Danger, minHeight = 56.dp, size = HlSize.t14, enabled = s.recordCount > 0)
     }
 }
 
 @Composable
-private fun ClearRow(label: String, count: Int, enabled: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 15.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(
-            label,
-            style = HlType.CardTitle.copy(fontSize = 13.sp),
-            color = if (enabled) HlColor.Danger else HlColor.TextDim,
-            modifier = Modifier.weight(1f),
-        )
-        Text("${count}건", style = HlType.Label, color = HlColor.TextDim)
+private fun Section(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+        HlSectionLabel(title)
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(Hl.colors.card)) { content() }
     }
 }
+
+@Composable
+private fun Setting(label: String, hint: String? = null, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        HlText(label, size = HlSize.t14, weight = FontWeight.SemiBold)
+        content()
+        if (hint != null) HlText(hint, size = HlSize.t12, color = Hl.colors.muted, lineHeight = 1.5f)
+    }
+}
+
+/** 고환 유무 — used only for the Total T estimate, and never leaves the device. */
+@Composable
+fun TestesSheet(current: GonadalStatus, onPick: (GonadalStatus) -> Unit, onDismiss: () -> Unit) {
+    HlSheet(onDismiss = onDismiss) {
+        HlSheetTitle("고환 유무", "Total T 예측에만 써요")
+        Column(Modifier.padding(horizontal = 12.dp).navigationBarsPadding().padding(bottom = 12.dp)) {
+            listOf(GonadalStatus.INTACT, GonadalStatus.POST_ORCHIECTOMY, GonadalStatus.DECLINED).forEach { g ->
+                HlMenuItem(g.label, { onPick(g) }, selected = current == g)
+            }
+        }
+    }
+}
+
+@Composable
+fun LicensesScreen(onBack: () -> Unit) {
+    val c = Hl.colors
+    Column(Modifier.fillMaxWidth()) {
+        HlTopBar("오픈소스 라이선스", onBack)
+        ScreenScroll(padding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 0.dp, bottom = 24.dp), gap = 8.dp, bottomInset = true) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card)) {
+                LICENSES.forEachIndexed { i, (name, license) ->
+                    if (i > 0) HlDivider()
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        HlText(name, size = HlSize.t14, weight = FontWeight.SemiBold)
+                        HlText(license, size = HlSize.t12, color = c.muted)
+                    }
+                }
+            }
+            HlText(
+                "예상 곡선의 주사·패치 모델 상수는 estrannaise.js(MIT 라이선스, © 2025 alix)에서 가져왔어요. 문헌 출처는 내 정보 › 모델·근거 버전에서 볼 수 있어요.",
+                size = HlSize.t12, color = c.muted, lineHeight = 1.6f,
+            )
+        }
+    }
+}
+
+private val LICENSES = listOf(
+    "Jetpack Compose · AndroidX" to "Apache License 2.0",
+    "Kotlin · kotlinx.coroutines" to "Apache License 2.0",
+    "estrannaise.js (모델 상수)" to "MIT License · © 2025 alix",
+    "org.json (Android 내장)" to "Apache License 2.0",
+)
