@@ -16,8 +16,8 @@ pharmacokinetic models in the published literature; log a real lab value and it
 personalised the curve becomes.
 
 - **Everything stays on the device** — no uploads, no account, no network calls
-- **Only draws what it can source** — a route gets a curve only when every parameter has provenance; the rest stay `Model unavailable`
-- **Never blends estimates with measurements** — the graph always distinguishes them
+- **Only draws what it can source** — a route gets a curve only when every parameter has provenance; the rest (gel) is left off the curve, and the app says why
+- **Never blends estimates with measurements** — an estimate is a teal band, a measurement a yellow diamond, always
 
 **⚠️ Reference tool only.** The projected curves are *population approximations* derived
 from public literature, not clinically validated values. The app does not suggest
@@ -28,25 +28,33 @@ device (no network calls).
 
 | <img src="docs/screenshots/home.png" width="230"> | <img src="docs/screenshots/flow.png" width="230"> | <img src="docs/screenshots/timeline.png" width="230"> |
 | :---: | :---: | :---: |
-| **Home** — current estimate, time to next dose, calibration state | **Flow** — past (solid) / future (dashed), uncertainty band, measured diamonds | **Timeline** — records by date, dose / lab filters |
+| **Home** — current E2 / Total T estimate, next dose, last lab, one-tap logging | **Flow** — past (solid) / future (dashed), range band, measured diamonds, missed doses | **Timeline** — records by date, daily medicines folded by month, filters and search |
 
 | <img src="docs/screenshots/dose.png" width="230"> | <img src="docs/screenshots/lab.png" width="230"> | <img src="docs/screenshots/me.png" width="230"> |
 | :---: | :---: | :---: |
-| **Log a dose** — one tap for a recent combination, or pick drug / route / amount | **Log a lab result** — measured E2 / Total T, unit conversion, assay method | **Me** — personalisation progress, local storage, app lock, CSV |
+| **Log a dose** — one tap for a frequent combination, single dose or repeating schedule, injection site | **Log a lab result** — measured E2 / Total T, unit conversion, draw time | **Me** — display, units, body info, schedules, reminders, notes, report, backup |
 
 ## Features
 
-- **Dose logging** — drug, route, amount, time (exact date/time picker included), repeating schedules (regimens), and one-tap sample data
-- **Lab results** — measured E2 / Total Testosterone values, unit conversion (pg/mL·pmol/L, ng/dL·nmol/L), assay method recorded
-- **Projected flow** — E2 and Total-T projection curves from literature PK/PD parameters
-  - E2: per-ester 3-compartment model for estradiol esters (estrannaise.js), plus oral / sublingual Bateman models
-  - Total-T: E2 delayed effect compartment + Hill suppression + CPA saturable suppression
-  - past (solid) / future (dashed) split, uncertainty band, dose ticks, measured-value diamonds
-  - **Calibrate the curve with real lab values** — scales exposure by the geometric mean of the measured/predicted ratio (Level 1–2, clamped to [0.5, 2.0])
-- **Timeline** — grouped by date, dose/lab filters, per-item delete
-- **Delete records** — individual / bulk by type / full reset / regimens, all behind a confirm dialog
-- **CSV import & export** — Storage Access Framework, no permissions needed ([sample](docs/sample/hrt_2month_sample.csv))
-- **Clinic notes** — the user records their own hormone-prescribing clinics (no bundled data, no network)
+- **First run** — six steps (current medication and schedule, back-filling past doses, testes, lab units, pre-HRT labs). Every step but the first can be skipped
+- **Dose logging** — drug, route (IM / SC injection, oral, sublingual, patch, gel), amount, time, injection site, status (taken / late / missed). A patch is logged by strength (µg/day) and change cycle
+- **Repeating schedules** — weekdays, time of day, end date. A second schedule for the same drug and route asks first, then ends the old one and starts the new one. The past doses a schedule would have produced are counted and shown before anything is recorded
+- **Lab results** — measured E2 / Total T, unit conversion (pg/mL·pmol/L, ng/dL·ng/mL·nmol/L), assay method, draw time (unknown allowed). A value far from the expectation is flagged as a possible unit mix-up before saving. The result screen shows the difference from the estimate, where the draw falls in the dosing cycle, and whether (and if not, why not) it calibrated the curve
+- **Projected flow** — E2 and Total T curves from literature PK/PD parameters
+  - E2: per-ester 3-compartment models (estrannaise.js), oral / sublingual one-compartment models, patch
+  - Total T: E2 delayed effect compartment + Hill suppression + saturable cyproterone suppression. Using your testes status sharpens it; "prefer not to say" draws no curve
+  - **Per-route calibration from real labs** — injection, oral/sublingual and patch are calibrated separately, the correction is limited to −50%…+100%, and the range narrows as labs accumulate
+  - A **model status** screen (labs used and not used, with reasons) and an **evidence explorer** (parameters, sources, limits)
+- **Timeline** — grouped by date, daily medicines folded by month, filters by type / drug / period plus search, edit · duplicate · delete per row
+- **Reminders** — injection days (the evening before and on the day), daily medicines (once more 30 minutes later), lab interval, appointments. **투약 완료** (mark as taken) in the notification records the dose without opening the app, and a locked screen shows only a neutral line
+- **Other records** — condition and symptoms, weight and blood pressure, stock (counts down as you log doses, with a run-out estimate), extra labs (LH, FSH …)
+- **Visit notes** — visit memos, next appointment, clinic info (typed by the user; no bundled data, no network)
+- **Report** — an A4 PDF or a tall image for a clinic visit. No name and no app name in it, and you pick the app to share with
+- **Home-screen widget** — next dose and a mark-as-taken button; it never shows a lab value
+- **Backup & restore** — an `.hlb` file (saved without a password) holds everything; restoring shows what is inside first and keeps the current state aside. CSV export / import reports which rows were skipped and why ([sample](docs/sample/hrt_2month_sample.csv))
+- **Privacy** — records live only in a file on the device; cloud backup and device-to-device transfer are off. You can hide the app in the recents switcher, disguise the launcher name and icon ("메모"), and neutralise notification wording (the app's real name still shows in the phone's app list and in notification headers). There is no app lock and no encryption of the records
+- **Display** — dark, light or system theme, text size (default · large · largest), 12/24-hour clock
+- English is not supported yet (the strings have to be moved out of the code first)
 
 ## Architecture
 
@@ -54,17 +62,18 @@ Multi-module Gradle:
 
 | Module | Role |
 | --- | --- |
-| `app` | Jetpack Compose UI, single `DashboardState` + pure `DashboardReducer` + `DashboardViewModel` |
-| `core:domain` | Domain types (`DoseEvent`, `LabResult`, `Regimen`, `Clinic` …), unit normalization |
+| `app` | Jetpack Compose UI, one `AppState` + pure reducers (`RecordsReducer`, `ScheduleOps`, `MemoOps` …) + `AppViewModel`; reminders, widget and file handling |
+| `core:domain` | Domain types (`DoseEvent`, `LabResult`, `Regimen`, `VisitMemo` …), unit normalization |
 | `core:evidence` | Evidence bundle — a route model activates only when every parameter has provenance |
-| `core:model-engine` | E2 curve engine, TT suppression engine, measured-value calibration engine |
-| `core:data` | Local JSON file persistence (`org.json`), CSV I/O |
+| `core:model-engine` | E2 curve engine, TT suppression engine, measured-value calibration engine, cycle analysis |
+| `core:data` | Local JSON file persistence (`org.json`), backup files, CSV I/O |
 
-- All state transitions are pure functions (`DashboardReducer`); only transitions that need persistence are written to file by the `ViewModel`
-- A curve is drawn only when the evidence bundle has provenance for its parameters — gel evidence is thin, so it stays `Model unavailable`
+- All state transitions are pure functions (the clock is passed in); only transitions that need persistence are written to file by the `ViewModel`. Writes happen off the main thread, one at a time, and a failed write is shown on screen
+- A curve is drawn only when the evidence bundle has provenance for its parameters — gel evidence is thin, so it is kept off the curve and only recorded
+- Records this build cannot read (written by a newer build, or holding a date or number no real log could hold) are not loaded and not deleted: they are kept and written back. "Delete all records" removes them too
 - Model parameters, sources, and review notes: [docs/evidence/README.md](docs/evidence/README.md)
 
-Design docs: [spec](docs/superpowers/specs/2026-08-26-hormone-log-android-design.md) · [implementation plan](docs/superpowers/plans/2026-08-26-hormone-log-android.md)
+Design docs: [spec](docs/superpowers/specs/2026-08-26-hormone-log-android-design.md) · [implementation plan](docs/superpowers/plans/2026-08-26-hormone-log-android.md) · [design request](docs/DesignRequest_2026-10-04.md) · [redesign log](docs/RedesignStatus_2026-10-04.md)
 
 ## Build & run
 
@@ -72,6 +81,14 @@ Design docs: [spec](docs/superpowers/specs/2026-08-26-hormone-log-android-design
 ./gradlew :app:assembleDebug
 ./gradlew :app:installDebug         # install on a connected device
 ./gradlew testDebugUnitTest         # unit tests, all modules
+```
+
+The screen tests (`app/src/androidTest`) wipe the app's records and settings before they
+start, so run them **only on a dedicated emulator**. With several devices attached, pick
+the emulator with `ANDROID_SERIAL`:
+
+```bash
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
 ```
 
 A local Android SDK is required (`sdk.dir` in `local.properties`).
@@ -91,8 +108,8 @@ builds live in [Releases](../../releases).
 
 - Kotlin 2.3.21 · Jetpack Compose (BOM 2026.06.00) · AGP 9.1.1 · Gradle 9.3.1 · JDK 17
 - minSdk 28 · targetSdk 36 · compileSdk 36
-- forced dark theme, navigation is a state enum + `when` (no navigation-compose)
-- persistence is plain-text JSON files (Room / encryption are follow-up work)
+- dark and light themes; navigation is a state enum + stack (no navigation-compose)
+- persistence is plain JSON files; no Room
 
 ## How it was made
 
@@ -103,4 +120,6 @@ and release were all done in conversational sessions with the coding agent **Cla
 
 ## Status
 
-Currently **in real-world testing**.
+Currently **in real-world testing**. In October 2026 the screens were rebuilt to match the
+design prototype (P0 · P1 · P2). Not done yet: an English UI, and bundling the Pretendard
+typeface (the system font is used for now).
