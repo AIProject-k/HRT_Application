@@ -1,69 +1,68 @@
 package com.hormonelog.core.data
 
-import com.hormonelog.core.domain.Analyte
-import com.hormonelog.core.domain.Assay
-import com.hormonelog.core.domain.Clinic
-import com.hormonelog.core.domain.DoseEvent
-import com.hormonelog.core.domain.DoseStatus
-import com.hormonelog.core.domain.DoseUnit
-import com.hormonelog.core.domain.Drug
-import com.hormonelog.core.domain.LabAnalyteValue
-import com.hormonelog.core.domain.LabResult
-import com.hormonelog.core.domain.PrescriptionBasis
-import com.hormonelog.core.domain.Regimen
-import com.hormonelog.core.domain.Route
-import com.hormonelog.core.domain.Telehealth
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.time.Instant
-import java.util.UUID
+import java.io.IOException
 
 /**
- * Plain-JSON local persistence for records — no encryption, no SQL. Enough to
- * survive an app restart; SQLCipher/Room is a later step.
+ * Local persistence for records as one plain JSON file. No encryption, no SQL.
  *
- * A file that cannot be parsed is never treated as "no records". It is moved aside
- * first, so the next save writes a fresh file instead of overwriting the damaged one,
- * and the bytes stay on disk to be recovered from.
+ * Reading never guesses: a file that cannot be read is never treated as "no records".
+ * It is moved aside first, so the next save writes a fresh file instead of overwriting
+ * the damaged one, and the bytes stay on disk to be recovered from. A single record
+ * this build does not understand is set aside on its own and written back on the next
+ * save — it does not take the rest down with it.
  */
 class RecordStore(private val file: File) {
 
-    data class Snapshot(
-        val doses: List<DoseEvent> = emptyList(),
-        val labs: List<LabResult> = emptyList(),
-        val regimens: List<Regimen> = emptyList(),
-        val clinics: List<Clinic> = emptyList(),
-    )
-
     /** Outcome of a [load]; an unreadable file is distinct from having no records. */
     sealed interface Load {
-        data class Ok(val snapshot: Snapshot) : Load
+        data class Ok(val snapshot: RecordSnapshot) : Load
 
         /** No file yet — a genuine first run. */
         data object Empty : Load
 
         /**
          * The file existed but could not be read or parsed. It has been renamed to
-         * [quarantined] (null only if even the rename failed) so nothing overwrites it.
+         * [quarantined] so nothing overwrites it; null if even the rename failed, or if the
+         * caller asked for the file to be left where it is (see [load]).
          */
         data class Unreadable(val quarantined: File?) : Load
     }
 
-    fun load(): Load {
+    /**
+     * Reads the file. With [quarantineOnFailure] (the app's own start-up) an unreadable file is moved aside, and
+     * the screen says so. A reminder or the widget, which have no screen to say anything on, pass false: it must
+     * not rename the user's records away from where the app looks for them.
+     */
+    fun load(quarantineOnFailure: Boolean = true): Load {
         if (!file.exists()) return Load.Empty
         return try {
-            val root = JSONObject(file.readText())
-            Load.Ok(
-                Snapshot(
-                    doses = root.optJSONArray("doses").mapObjects(::doseFrom),
-                    labs = root.optJSONArray("labs").mapObjects(::labFrom),
-                    regimens = root.optJSONArray("regimens").mapObjects(::regimenFrom),
-                    clinics = root.optJSONArray("clinics").mapObjects(::clinicFrom),
-                ),
-            )
+            Load.Ok(RecordJson.fromJson(JSONObject(String(file.readBytes(), Charsets.UTF_8))))
         } catch (_: Exception) {
-            Load.Unreadable(quarantine())
+            Load.Unreadable(if (quarantineOnFailure) quarantine() else null)
+        }
+    }
+
+    /**
+     * Writes the file, then reads it back before it replaces the old one: a write that
+     * does not round-trip never destroys a good file. Throws [IOException] on failure.
+     */
+    fun save(snapshot: RecordSnapshot) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        try {
+            // Everything that can fail is in here, so a failure is an IOException the caller reports.
+            val bytes = RecordJson.toJson(snapshot).toString().toByteArray(Charsets.UTF_8)
+            file.parentFile?.mkdirs()
+            tmp.writeBytes(bytes)
+            if (!tmp.readBytes().contentEquals(bytes)) throw IOException("저장한 파일을 다시 읽어 확인하지 못했어요")
+            if (!tmp.renameTo(file)) {
+                file.writeBytes(bytes)
+                tmp.delete()
+            }
+        } catch (e: Exception) {
+            tmp.delete()
+            throw if (e is IOException) e else IOException(e.message, e)
         }
     }
 
@@ -73,143 +72,5 @@ class RecordStore(private val file: File) {
         if (file.renameTo(dest)) dest else null
     } catch (_: Exception) {
         null
-    }
-
-    fun save(snapshot: Snapshot) {
-        val root = JSONObject().apply {
-            put("version", 1)
-            put("doses", JSONArray().also { a -> snapshot.doses.forEach { a.put(doseTo(it)) } })
-            put("labs", JSONArray().also { a -> snapshot.labs.forEach { a.put(labTo(it)) } })
-            put("regimens", JSONArray().also { a -> snapshot.regimens.forEach { a.put(regimenTo(it)) } })
-            put("clinics", JSONArray().also { a -> snapshot.clinics.forEach { a.put(clinicTo(it)) } })
-        }
-        file.parentFile?.mkdirs()
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(root.toString())
-        if (!tmp.renameTo(file)) {
-            file.writeText(root.toString())
-            tmp.delete()
-        }
-    }
-
-    // ── mapping ──────────────────────────────────────────────
-    private fun doseTo(d: DoseEvent) = JSONObject().apply {
-        put("id", d.id.toString())
-        put("occurredAt", d.occurredAt.toEpochMilli())
-        put("sourceZoneId", d.sourceZoneId)
-        put("drug", d.drug.name)
-        put("route", d.route.name)
-        put("amountEntered", d.amountEntered)
-        put("enteredUnit", d.enteredUnit.name)
-        putOpt("normalizedMilligrams", d.normalizedMilligrams)
-        put("status", d.status.name)
-        putOpt("note", d.note)
-        put("revision", d.revision)
-    }
-
-    private fun doseFrom(o: JSONObject) = DoseEvent(
-        id = UUID.fromString(o.getString("id")),
-        occurredAt = Instant.ofEpochMilli(o.getLong("occurredAt")),
-        sourceZoneId = o.getString("sourceZoneId"),
-        drug = Drug.valueOf(o.getString("drug")),
-        route = Route.valueOf(o.getString("route")),
-        amountEntered = o.getDouble("amountEntered"),
-        enteredUnit = DoseUnit.valueOf(o.getString("enteredUnit")),
-        normalizedMilligrams = if (o.isNull("normalizedMilligrams")) null else o.getDouble("normalizedMilligrams"),
-        status = DoseStatus.valueOf(o.getString("status")),
-        note = o.optStringOrNull("note"),
-        revision = o.optInt("revision", 1),
-    )
-
-    private fun labTo(l: LabResult) = JSONObject().apply {
-        put("id", l.id.toString())
-        putOpt("collectedAt", l.collectedAt?.toEpochMilli())
-        putOpt("sourceZoneId", l.sourceZoneId)
-        put("assay", l.assay.name)
-        putOpt("note", l.note)
-        put("analytes", JSONArray().also { arr ->
-            l.analytes.forEach { v ->
-                arr.put(JSONObject().apply {
-                    put("analyte", v.analyte.name)
-                    put("reportedValue", v.reportedValue)
-                    put("reportedUnit", v.reportedUnit)
-                    putOpt("canonicalValue", v.canonicalValue)
-                })
-            }
-        })
-    }
-
-    private fun labFrom(o: JSONObject) = LabResult(
-        id = UUID.fromString(o.getString("id")),
-        collectedAt = if (o.isNull("collectedAt")) null else Instant.ofEpochMilli(o.getLong("collectedAt")),
-        sourceZoneId = o.optStringOrNull("sourceZoneId"),
-        assay = Assay.valueOf(o.getString("assay")),
-        note = o.optStringOrNull("note"),
-        analytes = o.optJSONArray("analytes").mapObjects { a ->
-            LabAnalyteValue(
-                analyte = Analyte.valueOf(a.getString("analyte")),
-                reportedValue = a.getDouble("reportedValue"),
-                reportedUnit = a.getString("reportedUnit"),
-                canonicalValue = if (a.isNull("canonicalValue")) null else a.getDouble("canonicalValue"),
-            )
-        },
-    )
-
-    private fun regimenTo(r: Regimen) = JSONObject().apply {
-        put("id", r.id.toString())
-        put("drug", r.drug.name)
-        put("route", r.route.name)
-        put("amountEntered", r.amountEntered)
-        put("enteredUnit", r.enteredUnit.name)
-        put("everyDays", r.everyDays)
-        put("startAt", r.startAt.toEpochMilli())
-        putOpt("endAt", r.endAt?.toEpochMilli())
-        put("active", r.active)
-    }
-
-    private fun regimenFrom(o: JSONObject) = Regimen(
-        id = UUID.fromString(o.getString("id")),
-        drug = Drug.valueOf(o.getString("drug")),
-        route = Route.valueOf(o.getString("route")),
-        amountEntered = o.getDouble("amountEntered"),
-        enteredUnit = DoseUnit.valueOf(o.getString("enteredUnit")),
-        everyDays = o.getInt("everyDays"),
-        startAt = Instant.ofEpochMilli(o.getLong("startAt")),
-        endAt = if (o.isNull("endAt")) null else Instant.ofEpochMilli(o.getLong("endAt")),
-        active = o.optBoolean("active", true),
-    )
-
-    private fun clinicTo(c: Clinic) = JSONObject().apply {
-        put("id", c.id.toString())
-        put("name", c.name)
-        put("region", c.region)
-        put("prescriptionBasis", c.prescriptionBasis.name)
-        put("telehealth", c.telehealth.name)
-        put("priceNote", c.priceNote)
-        put("memo", c.memo)
-        put("sourceUrl", c.sourceUrl)
-    }
-
-    private fun clinicFrom(o: JSONObject) = Clinic(
-        id = UUID.fromString(o.getString("id")),
-        name = o.optString("name"),
-        region = o.optString("region"),
-        prescriptionBasis = runCatching { PrescriptionBasis.valueOf(o.getString("prescriptionBasis")) }.getOrDefault(PrescriptionBasis.UNKNOWN),
-        telehealth = runCatching { Telehealth.valueOf(o.getString("telehealth")) }.getOrDefault(Telehealth.UNKNOWN),
-        priceNote = o.optString("priceNote"),
-        memo = o.optString("memo"),
-        sourceUrl = o.optString("sourceUrl"),
-    )
-
-    // Nulls are simply omitted; JSONObject.isNull(key) is true for absent keys too.
-
-    private fun JSONObject.optStringOrNull(key: String): String? =
-        if (isNull(key)) null else optString(key).ifEmpty { null }
-
-    private inline fun <T> JSONArray?.mapObjects(map: (JSONObject) -> T): List<T> {
-        if (this == null) return emptyList()
-        return (0 until length()).mapNotNull { i ->
-            (opt(i) as? JSONObject)?.let(map)
-        }
     }
 }
