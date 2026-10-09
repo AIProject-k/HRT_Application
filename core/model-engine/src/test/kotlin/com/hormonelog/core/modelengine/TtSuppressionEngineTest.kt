@@ -58,6 +58,47 @@ class TtSuppressionEngineTest {
     }
 
     @Test
+    fun nobodyWhoDeclinedToSayGetsACurve() {
+        assertEquals(
+            EstimateResult.Unavailable(ModelUnavailableReason.HIDDEN_BY_USER),
+            engine.curve(evBiweekly(), start.plus(30, ChronoUnit.DAYS), now, status = GonadalStatus.DECLINED),
+        )
+    }
+
+    @Test
+    fun aMeasuredStartingPointReplacesTheLiteratureOneForSomeoneWithTestes() {
+        // Before E2 has built up, the curve sits at the person's own baseline.
+        val first = start.plus(1, ChronoUnit.DAYS)
+        fun early(baselineT: Double?): Double {
+            val r = engine.curve(evBiweekly(), start, first, baselineT = baselineT) as EstimateResult.Available
+            return r.series.points.first().median
+        }
+        assertEquals(450.0, early(450.0), 10.0)
+        assertEquals(600.0, early(null), 10.0)
+        // A number that cannot be a real starting point (a unit slip) is held to a sane range.
+        assertEquals(1200.0, early(99999.0), 15.0)
+        assertEquals(150.0, early(10.0), 5.0)
+    }
+
+    @Test
+    fun aMeasuredBaselineDoesNotApplyAfterAnOrchiectomy() {
+        val a = engine.curve(evBiweekly(), start, start.plus(1, ChronoUnit.DAYS), status = GonadalStatus.POST_ORCHIECTOMY, baselineT = 900.0) as EstimateResult.Available
+        assertTrue(a.series.points.first().median <= 30.0)
+    }
+
+    @Test
+    fun aMeasuredTestosteroneCorrectionScalesTheCurveAndItsInterval() {
+        val from = start.plus(30, ChronoUnit.DAYS)
+        val base = engine.curve(evBiweekly(), from, now) as EstimateResult.Available
+        val scaled = engine.curve(evBiweekly(), from, now, tAdjustment = TtAdjustment(scale = 1.5, shrink = 0.6)) as EstimateResult.Available
+
+        val b = base.series.points.last()
+        val s = scaled.series.points.last()
+        assertEquals(b.median * 1.5, s.median, 1e-6)
+        assertTrue((s.upper - s.lower) / s.median < (b.upper - b.lower) / b.median)
+    }
+
+    @Test
     fun noDosesPropagatesUnavailable() {
         assertEquals(
             EstimateResult.Unavailable(ModelUnavailableReason.NO_DATA),
