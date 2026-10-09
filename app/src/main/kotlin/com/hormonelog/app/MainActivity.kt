@@ -1,81 +1,52 @@
 package com.hormonelog.app
 
+import android.app.ActivityManager
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.remember
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.hormonelog.app.feature.dashboard.DashboardActions
-import com.hormonelog.app.feature.dashboard.DashboardScreen
-import com.hormonelog.app.feature.dashboard.DashboardSheet
-import com.hormonelog.app.feature.dashboard.DashboardViewModel
-import com.hormonelog.app.ui.theme.HormoneLogTheme
-import java.time.Instant
-import java.time.ZoneId
+import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.ViewModelProvider
+import com.hormonelog.core.domain.AppSettings
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var vm: AppViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            HormoneLogTheme {
-                val now = remember { Instant.now() }
-                val zone = remember { ZoneId.systemDefault() }
-                val vm: DashboardViewModel = viewModel()
+        enableEdgeToEdge()
+        vm = ViewModelProvider(this)[AppViewModel::class.java]
+        applySecurity(vm.state.settings)
+        setContent { AppRoot(vm = vm, onSettingsChanged = ::applySecurity) }
+    }
 
-                DashboardScreen(
-                    state = vm.state,
-                    now = now,
-                    zone = zone,
-                    actions = DashboardActions(
-                        onTab = vm::switchTab,
-                        onOpenDose = { vm.openSheet(DashboardSheet.DOSE) },
-                        onOpenLab = { vm.openSheet(DashboardSheet.LAB) },
-                        onCloseSheet = vm::closeSheet,
-                        onEditDose = vm::editDose,
-                        onSetDoseDrug = vm::setDoseDrug,
-                        onSetDoseRoute = vm::setDoseRoute,
-                        onSetDoseStatus = vm::setDoseStatus,
-                        onStepDose = vm::stepDose,
-                        onSetDoseAmount = vm::setDoseAmount,
-                        onSaveDose = { vm.saveDose(now) },
-                        onSaveRegimen = { vm.saveRegimen(now) },
-                        onLoadSample = { vm.loadSampleRegimen(now) },
-                        onImportCsv = vm::importCsv,
-                        exportCsvText = vm::exportCsv,
-                        onOpenClinics = vm::openClinics,
-                        onCloseClinics = vm::closeClinics,
-                        onNewClinic = vm::newClinic,
-                        onEditClinic = vm::editClinic,
-                        onEditClinicDraft = vm::editClinicDraft,
-                        onCancelClinicDraft = vm::cancelClinicDraft,
-                        onSaveClinic = vm::saveClinic,
-                        onDeleteClinic = vm::deleteClinic,
-                        onEditLab = vm::editLab,
-                        onFocusLab = vm::focusLabField,
-                        onKeyLab = vm::pressKey,
-                        onSaveLab = { vm.saveLab(now) },
-                        onBeginEditDose = vm::beginEditDose,
-                        onBeginEditLab = vm::beginEditLab,
-                        onDeleteDose = vm::deleteDose,
-                        onDeleteLab = vm::deleteLab,
-                        onDeleteRegimen = vm::deleteRegimen,
-                        onClearDoses = vm::clearDoses,
-                        onClearLabs = vm::clearLabs,
-                        onClearAll = vm::clearAllRecords,
-                        onSeries = vm::setSeries,
-                        onRange = vm::setRange,
-                        onScrub = vm::setScrub,
-                        onFilter = vm::setTimelineFilter,
-                        onDismissToast = vm::dismissToast,
-                        onUndo = vm::undoLast,
-                        onConfirmDuplicate = { vm.saveDose(now, force = true) },
-                        onCancelDuplicate = vm::cancelDuplicate,
-                        onDismissStorageWarning = vm::dismissStorageWarning,
-                        onConfirmBackfill = vm::confirmBackfill,
-                        onCancelBackfill = vm::cancelBackfill,
-                    ),
-                )
-            }
+    override fun onResume() {
+        super.onResume()
+        vm.onResume()
+    }
+
+    /**
+     * Keeps the app's content out of screenshots and the recent-apps switcher when the user asks
+     * for it, and — in disguise — labels this task the way the launcher entry is labelled, so the
+     * switcher does not give the real name away either.
+     */
+    private fun applySecurity(settings: AppSettings) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Hides only the switcher's thumbnail; the user can still take a screenshot of their own screen.
+            setRecentsScreenshotEnabled(!settings.hideInRecents)
+        } else if (settings.hideInRecents) {
+            // Before Android 13 the only way to hide the thumbnail also blocks screenshots.
+            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        @Suppress("DEPRECATION")
+        if (settings.disguiseLauncher) {
+            setTaskDescription(ActivityManager.TaskDescription(getString(R.string.disguised_label), R.mipmap.ic_memo, 0xFF0F1115.toInt()))
+        } else {
+            setTaskDescription(ActivityManager.TaskDescription(getString(R.string.app_name), R.mipmap.ic_launcher, 0xFF0F1115.toInt()))
         }
     }
 }
