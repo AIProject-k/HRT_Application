@@ -16,6 +16,9 @@ data class LabResult(
     val assay: Assay,
     val analytes: List<LabAnalyteValue> = emptyList(),
     val note: String? = null,
+    /** Drawn before HRT started: the personal starting point, never a calibration lab. */
+    val isBaseline: Boolean = false,
+    val source: RecordSource = RecordSource.MANUAL,
 )
 
 data class LabAnalyteValue(
@@ -33,17 +36,21 @@ data class LabAnalyteValue(
             val u = reportedUnit.trim().lowercase()
             return when (analyte) {
                 Analyte.ESTRADIOL -> when (u) {
-                    "pg/ml" -> reportedValue
-                    "pmol/l" -> reportedValue / 3.6713
+                    "pg/ml", "ng/l" -> reportedValue
+                    "pmol/l" -> reportedValue / PMOL_PER_PG_E2
                     else -> null
                 }
                 Analyte.TOTAL_TESTOSTERONE -> when (u) {
                     "ng/dl" -> reportedValue
-                    "nmol/l" -> reportedValue * 28.842
+                    "ng/ml" -> reportedValue * 100.0
+                    "nmol/l" -> reportedValue * NGDL_PER_NMOL_T
                     else -> null
                 }
             }
         }
+
+        private const val PMOL_PER_PG_E2 = 3.6713
+        private const val NGDL_PER_NMOL_T = 28.842
     }
 }
 

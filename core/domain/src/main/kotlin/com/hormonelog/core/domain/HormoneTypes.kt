@@ -31,11 +31,17 @@ enum class DoseStatus {
 /** Actual product/formulation taken, not a recommendation. */
 enum class Drug {
     ESTRADIOL_VALERATE,
+    ESTRADIOL_CYPIONATE,
     ESTRADIOL_TABLET,
     ESTRADIOL_PATCH,
+    ESTRADIOL_GEL,
     SPIRONOLACTONE,
     CYPROTERONE,
 }
+
+/** Anti-androgens add nothing to the E2 curve; they only act on the Total T curve. */
+val Drug.isAntiandrogen: Boolean
+    get() = this == Drug.SPIRONOLACTONE || this == Drug.CYPROTERONE
 
 /**
  * Routes this formulation can physically be given by. A patch is not injected and an
@@ -44,25 +50,54 @@ enum class Drug {
  */
 val Drug.allowedRoutes: List<Route>
     get() = when (this) {
-        Drug.ESTRADIOL_VALERATE -> listOf(Route.IM_INJECTION, Route.SC_INJECTION)
+        Drug.ESTRADIOL_VALERATE, Drug.ESTRADIOL_CYPIONATE -> listOf(Route.IM_INJECTION, Route.SC_INJECTION)
         Drug.ESTRADIOL_TABLET -> listOf(Route.ORAL, Route.SUBLINGUAL)
         Drug.ESTRADIOL_PATCH -> listOf(Route.PATCH)
+        Drug.ESTRADIOL_GEL -> listOf(Route.GEL)
         Drug.SPIRONOLACTONE, Drug.CYPROTERONE -> listOf(Route.ORAL)
     }
 
-/** Units that make sense for a route; a patch is counted, not weighed. */
+/** Units that make sense for a route; a patch is rated in µg released per day. */
 val Route.allowedUnits: List<DoseUnit>
     get() = when (this) {
-        Route.PATCH -> listOf(DoseUnit.PATCH, DoseUnit.MG_PER_DAY)
-        Route.GEL -> listOf(DoseUnit.MG_PER_DAY, DoseUnit.MG)
+        Route.PATCH -> listOf(DoseUnit.UG_PER_DAY)
         else -> listOf(DoseUnit.MG)
     }
 
-/** Unit exactly as the user entered it; conversion to mg may not be possible. */
+/**
+ * Unit exactly as the user entered it; conversion to mg may not be possible.
+ * [MG_PER_DAY] and [PATCH] are legacy: older builds offered them for patches, so
+ * stored records may still carry them.
+ */
 enum class DoseUnit {
     MG,
     MG_PER_DAY,
     PATCH,
+    UG_PER_DAY,
+}
+
+/** Where a record came from, so a bulk batch (import, sample) can be told apart later. */
+enum class RecordSource {
+    MANUAL,
+    SCHEDULE,
+    IMPORT,
+    SAMPLE,
+}
+
+/** Injection site, for rotation. Only meaningful for [Route.IM_INJECTION] / [Route.SC_INJECTION]. */
+enum class InjectionSite {
+    LEFT_THIGH,
+    RIGHT_THIGH,
+    LEFT_GLUTE,
+    RIGHT_GLUTE,
+    LEFT_ABDOMEN,
+    RIGHT_ABDOMEN,
+}
+
+/** How often a patch is changed; the two cycles have separate release profiles. */
+enum class PatchCycle {
+    TWICE_WEEKLY,
+    WEEKLY,
 }
 
 /** Laboratory analytes recorded as first-class measurements. */
@@ -76,4 +111,7 @@ enum class GonadalStatus {
     INTACT,
     POST_ORCHIECTOMY,
     UNKNOWN,
+
+    /** The user chose not to say. The Total T curve is not drawn at all. */
+    DECLINED,
 }

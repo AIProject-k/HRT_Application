@@ -70,4 +70,29 @@ class RecordContractsTest {
     fun unknownAnalyteUnitLeavesCanonicalNull() {
         assertNull(LabAnalyteValue.canonical(Analyte.TOTAL_TESTOSTERONE, 21.0, "??"))
     }
+
+    @Test
+    fun totalTestosteroneConvertsFromEveryUnitALabMayUse() {
+        assertEquals(41.0, LabAnalyteValue.canonical(Analyte.TOTAL_TESTOSTERONE, 41.0, "ng/dL")!!, 0.0)
+        assertEquals(30.0, LabAnalyteValue.canonical(Analyte.TOTAL_TESTOSTERONE, 0.3, "ng/mL")!!, 1e-9)
+        assertEquals(28.842, LabAnalyteValue.canonical(Analyte.TOTAL_TESTOSTERONE, 1.0, "nmol/L")!!, 1e-9)
+    }
+
+    @Test
+    fun patchStrengthIsReadAsMicrogramsPerDay() {
+        assertEquals(50.0, dose(DoseStatus.ADMINISTERED, DoseUnit.UG_PER_DAY, 50.0).patchMicrogramsPerDay!!, 0.0)
+        // Older builds labelled the strength "mg/일": 50 there can only mean 50 µg.
+        assertEquals(50.0, dose(DoseStatus.ADMINISTERED, DoseUnit.MG_PER_DAY, 50.0).patchMicrogramsPerDay!!, 0.0)
+        assertEquals(50.0, dose(DoseStatus.ADMINISTERED, DoseUnit.MG_PER_DAY, 0.05).patchMicrogramsPerDay!!, 1e-9)
+        // A bare count of patches says nothing about strength.
+        assertNull(dose(DoseStatus.ADMINISTERED, DoseUnit.PATCH, 1.0).patchMicrogramsPerDay)
+    }
+
+    @Test
+    fun everyDrugOffersOnlyRoutesItCanActuallyBeGivenBy() {
+        assertEquals(listOf(Route.PATCH), Drug.ESTRADIOL_PATCH.allowedRoutes)
+        assertEquals(listOf(Route.GEL), Drug.ESTRADIOL_GEL.allowedRoutes)
+        assertEquals(listOf(Route.IM_INJECTION, Route.SC_INJECTION), Drug.ESTRADIOL_CYPIONATE.allowedRoutes)
+        assertEquals(listOf(DoseUnit.UG_PER_DAY), Route.PATCH.allowedUnits)
+    }
 }
