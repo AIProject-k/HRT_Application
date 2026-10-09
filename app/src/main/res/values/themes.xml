@@ -1,0 +1,8 @@
+<resources>
+    <!-- The window behind Compose follows the system setting; the app's own theme choice is drawn by Compose on top. -->
+    <style name="Theme.HormoneLog" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

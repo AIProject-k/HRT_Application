@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launcher label stays as it always was; the disguise label is what the user chose to show instead. -->
+    <string name="app_name">HormoneLog</string>
+    <string name="disguised_label">메모</string>
+    <string name="notification_channel_name">알림</string>
+    <string name="widget_label">다음 투약</string>
+    <string name="widget_description">다음 투약과 투약 완료 버튼</string>
+</resources>
