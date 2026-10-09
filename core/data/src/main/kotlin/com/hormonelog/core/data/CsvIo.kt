@@ -64,7 +64,7 @@ object CsvIo {
         val labs = ArrayList<LabResult>()
         val skipped = ArrayList<SkippedRow>()
         var columns = DEFAULT_COLUMNS
-        for ((n, record) in splitRecords(text.removePrefix("﻿")).withIndex()) {
+        for ((n, record) in splitRecords(text.removePrefix("\uFEFF")).withIndex()) {
             val lineNo = record.first
             val f = record.second
             if (n == 0 && f.firstOrNull()?.trim()?.startsWith("type", ignoreCase = true) == true) {
@@ -153,7 +153,7 @@ object CsvIo {
      * part of a CSV — a full backup carries those.
      */
     fun export(doses: List<DoseEvent>, labs: List<LabResult>, zone: ZoneId = ZoneId.systemDefault()): String {
-        val sb = StringBuilder("﻿").append(HEADER).append('\n')
+        val sb = StringBuilder("\uFEFF").append(HEADER).append('\n')
         for (d in doses.sortedBy { it.occurredAt }) {
             row(
                 sb,

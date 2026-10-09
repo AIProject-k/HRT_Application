@@ -193,7 +193,7 @@ class CsvIoTest {
     @Test
     fun theExportOpensCleanlyInAKoreanSpreadsheet() {
         // A UTF-8 byte-order mark is what makes Excel show Hangul instead of mojibake.
-        assertTrue(CsvIo.export(emptyList(), emptyList()).startsWith("﻿"))
+        assertTrue(CsvIo.export(emptyList(), emptyList()).startsWith("\uFEFF"))
         assertEquals(0, CsvIo.parse(CsvIo.export(emptyList(), emptyList())).skipped)
     }
 
