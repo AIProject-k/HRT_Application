@@ -131,7 +131,11 @@ class ChatDeviceTest {
                 assertFalse(session.ui.connected)
                 assertEquals(0, calls)
                 compose.runOnIdle { session.connect() }
-                compose.onNode(hasSetTextAction()).performTextInput("현재 상태 알려줘")
+                scenario.onActivity { activity ->
+                    val fields = ArrayList<android.view.View>()
+                    activity.window.decorView.findViewsWithText(fields, "채팅 입력", android.view.View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION)
+                    (fields.single() as android.widget.EditText).setText("현재 상태 알려줘")
+                }
                 compose.onNodeWithText("보내기").performClick()
                 compose.waitUntil(10_000) { session.ui.lines.last().text.startsWith("현재 상태") }
                 assertEquals(1, calls)
@@ -171,33 +175,24 @@ class ChatDeviceTest {
         }
     }
 
-    @Test fun selectsAllModelsAndKeepsSelectionAfterActivityRestart() {
-        check(InstrumentationRegistry.getArguments().getString("dedicatedEmulator") == "yes")
+    @Test fun offlineModelLabelSurvivesActivityRestartWithoutChangingRecords() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var vm: AppViewModel
-            lateinit var settingsFile: File
             var records = AppState().snapshot
             scenario.onActivity { activity ->
                 vm = ViewModelProvider(activity)[AppViewModel::class.java]
                 records = vm.state.snapshot
-                settingsFile = File(activity.filesDir, "settings.json")
                 activity.setContent { HormoneLogTheme { ChatScreen(vm.chat, {}) } }
             }
-            for (model in listOf(ChatModel.OPUS, ChatModel.HAIKU, ChatModel.SONNET)) {
-                compose.onNodeWithText(model.label, useUnmergedTree = true).performClick()
-                compose.waitUntil(10_000) { vm.chat.model == model && SettingsStore(settingsFile).load()?.chatModel == model }
-                assertEquals(records, vm.state.snapshot)
-            }
+            compose.onNodeWithText("Qwen3-0.6B · 오프라인 기록 도우미").assertExists()
+            compose.onNodeWithText("Haiku").assertDoesNotExist()
             scenario.recreate()
             scenario.onActivity { activity ->
                 vm = ViewModelProvider(activity)[AppViewModel::class.java]
                 activity.setContent { HormoneLogTheme { ChatScreen(vm.chat, {}) } }
             }
-            compose.onNodeWithText("Sonnet 5.5 · 다음 요청부터 사용해요").assertExists()
-            assertEquals(ChatModel.SONNET, vm.chat.model)
+            compose.onNodeWithText("Qwen3-0.6B · 오프라인 기록 도우미").assertExists()
             assertEquals(records, vm.state.snapshot)
-            compose.onNodeWithText("Haiku", useUnmergedTree = true).performClick()
-            compose.waitUntil(10_000) { SettingsStore(settingsFile).load()?.chatModel == ChatModel.HAIKU }
         }
     }
 

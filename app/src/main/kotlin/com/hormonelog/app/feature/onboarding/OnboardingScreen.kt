@@ -178,7 +178,7 @@ private fun Welcome() {
         StepTitle("투약과 검사를 기록하면\n예상 곡선을 그려 드려요")
         HlText("문헌 기반 약동학 모델로 E2·Total T의 예상 범위를 보여주고, 검사값이 쌓이면 내 몸에 맞게 보정해요.", size = HlSize.t14, color = c.muted, lineHeight = 1.6f)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card).padding(horizontal = 16.dp, vertical = 6.dp)) {
-            Promise(HlIcon.Phone, "원본 기록은 기기에 저장해요", "일반 기록은 오프라인이에요. 선택형 채팅 입력은 Claude 서버로 전송돼요.", divider = true)
+            Promise(HlIcon.Phone, "원본 기록은 기기에 저장해요", "기록과 채팅 해석은 기기 안에서 처리해요. AI 모델을 설치할 때만 인터넷이 필요해요.", divider = true)
             Promise(HlIcon.Flow, "참고용 추정이에요", "예상값은 항상 범위로 보여주고, 실측값과 구분해요.", divider = true)
             Promise(HlIcon.CircleMinus, "용량을 권하지 않아요", "용량 판단은 의료진과 함께 해 주세요.", divider = false)
         }

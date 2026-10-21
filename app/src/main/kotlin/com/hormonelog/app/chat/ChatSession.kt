@@ -29,6 +29,7 @@ class ChatSession(
     private val clock: () -> Instant = Instant::now,
     private val onModelChanged: (ChatModel) -> Unit = {},
     private val conversationStore: ChatConversationStore? = null,
+    private val allowOfflineInput: Boolean = false,
 ) {
     var ui by mutableStateOf(ChatUi())
         private set
@@ -94,7 +95,7 @@ class ChatSession(
         val shortcut = ChatShortcut.find(text) ?: return null
         return shortcut.takeUnless { state().chatMemories.any { m -> m.name.filterNot { it.isWhitespace() } == text.filterNot { it.isWhitespace() } } }
     }
-    fun canSend(text: String) = !ui.busy && !ui.saveFailed && text.isNotBlank() && (ui.connected || localShortcut(text) != null)
+    fun canSend(text: String) = !ui.busy && !ui.saveFailed && text.isNotBlank() && (allowOfflineInput || ui.connected || localShortcut(text) != null)
     fun runShortcut(shortcut: ChatShortcut) = showLocal(shortcut.action)
     fun showStatus() = showLocal("status")
     fun showLabs() = showLocal("lab_results")

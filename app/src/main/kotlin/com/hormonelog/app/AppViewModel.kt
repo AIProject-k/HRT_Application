@@ -73,15 +73,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var state by mutableStateOf(AppState())
         private set
 
+    val chatSetup = com.hormonelog.app.chat.LocalChatController(app, viewModelScope) { state }
     val chat = com.hormonelog.app.chat.ChatSession({ state }, { next, done ->
         state = next
         persistRecords(next, done)
         Reminders.update(app, next)
-    }, { id, input, done -> com.hormonelog.app.platform.TermuxChat.request(app, id, input, state.settings.chatModel, done) },
-        com.hormonelog.app.platform.TermuxChat::cancel,
-        onModelChanged = { model -> act { it.copy(settings = it.settings.copy(chatModel = model)) } },
-        conversationStore = com.hormonelog.app.chat.ChatConversationStore(File(files, "chat-conversation.json")))
-    val chatSetup = com.hormonelog.app.chat.ChatSetupController(app, viewModelScope, chat)
+    }, chatSetup::request, chatSetup::cancel,
+        conversationStore = com.hormonelog.app.chat.ChatConversationStore(File(files, "chat-conversation.json")),
+        allowOfflineInput = true).also { chatSetup.chat = it }
 
     init {
         val storedSettings = settingsStore.load()
@@ -119,6 +118,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         chat.suspendRequest()
+        chatSetup.dispose()
         if (ViewModelHolder.current === this) ViewModelHolder.current = null
         super.onCleared()
     }

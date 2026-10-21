@@ -21,10 +21,10 @@ data class ChatCommand(
 data class ChatDecision(val message: String, val next: AppState? = null)
 enum class ChatInputMode { RECORD, TEMPLATE, SHORTCUT }
 
-/** Claude extracts literal evidence; only this local validator may turn it into records. */
+/** Parsers extract literal evidence; only this local validator may turn it into records. */
 object ChatCommands {
     const val MAX_BATCH_DOSES = 50
-    val readActions = setOf("recent", "status", "lab_results")
+    val readActions = setOf("recent", "status", "lab_results", "next_injection")
     private fun compact(s: String) = s.lowercase().replace(Regex("\\s+"), "")
     private val drugs = mapOf(
         "ev" to Drug.ESTRADIOL_VALERATE, "에스트라디올발레레이트" to Drug.ESTRADIOL_VALERATE,
@@ -48,6 +48,8 @@ object ChatCommands {
             if (name.startsWith("유트로게스탄")) P4Product.UTROGESTAN_SOFT_CAPSULE else P4Product.UNKNOWN)
         return s.chatMemories.filterIsInstance<ChatMemory.Alias>().firstOrNull { compact(it.name) == name }
     }
+
+    internal fun drugNames(s: AppState): List<String> = drugs.keys.toList() + s.chatMemories.filterIsInstance<ChatMemory.Alias>().map { it.name }
 
     fun reservedName(name: String) = compact(name) in drugs || compact(name) in routes || compact(name) in
         setOf("오늘", "어제", "방금", "지금", "최근", "기록", "등록", "취소", "기억", "단축어", "e2", "p4", "tt") || ChatShortcut.find(name) != null

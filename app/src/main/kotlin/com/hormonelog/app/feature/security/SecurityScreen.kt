@@ -156,7 +156,7 @@ fun SecurityScreen(s: AppState, fmt: Fmt, actions: SecurityActions) {
             }
 
             HlSectionLabel("보안")
-            HlText("원본 기록과 기억한 용량은 기기에 저장해요. 채팅 입력과 기억 이름·종류는 Claude 서버로 전송돼요. 기억한 단축어는 전체 백업에 포함돼요.", size = HlSize.t12, color = c.muted, lineHeight = 1.5f)
+            HlText("원본 기록과 기억한 용량은 기기에 저장해요. 채팅 입력도 기기 안에서 처리하며 외부 AI 서버로 보내지 않아요. 기억한 단축어는 전체 백업에 포함돼요.", size = HlSize.t12, color = c.muted, lineHeight = 1.5f)
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card)) {
                 Column(Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     HlText("위장 모드", size = HlSize.t14, weight = FontWeight.Bold)

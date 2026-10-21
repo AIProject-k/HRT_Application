@@ -1,9 +1,5 @@
 package com.hormonelog.app.feature.chat
 
-import android.content.Intent
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,29 +10,19 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import com.hormonelog.app.chat.ChatSession
 import com.hormonelog.app.chat.ChatShortcut
-import com.hormonelog.app.platform.TermuxChat
 import com.hormonelog.app.ui.kit.*
 import com.hormonelog.app.ui.theme.Hl
 import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
-import com.hormonelog.core.domain.ChatModel
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ChatScreen(chat: ChatSession, back: () -> Unit, setup: com.hormonelog.app.chat.ChatSetupController? = null) {
+fun ChatScreen(chat: ChatSession, back: () -> Unit, setup: com.hormonelog.app.chat.LocalChatController? = null) {
     val ui = chat.ui
-    val context = LocalContext.current
     val c = Hl.colors
-    var permissionDenied by remember { mutableStateOf(false) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        permissionDenied = !granted
-        if (granted) chat.connect()
-    }
     val scroll = rememberLazyListState()
     var followLatest by remember { mutableStateOf(true) }
     var autoScrolling by remember { mutableStateOf(false) }
@@ -61,25 +47,15 @@ fun ChatScreen(chat: ChatSession, back: () -> Unit, setup: com.hormonelog.app.ch
             contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item(key = "controls") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HlSegmented(ChatModel.entries.map { SegItem(it, it.label) }, chat.model, chat::selectModel)
-                    HlText("${chat.model.label} 5.5 · 다음 요청부터 사용해요${if (ui.busy) " · 처리 중에는 변경할 수 없어요" else ""}", size = HlSize.t12, color = c.muted)
-                    HlText("입력 대화와 기억 이름·종류는 Claude 서버로 전송돼요. 원본 기록 조회 결과는 기기 안에서만 처리해요. 최근 대화 200개와 작성 중인 입력은 기기에 보관해요. ‘새 대화’로 비울 수 있어요.", size = HlSize.t12, color = c.muted)
+                    HlText("Qwen3-0.6B · 오프라인 기록 도우미", size = HlSize.t14)
+                    HlText("기본 조회·명확한 단일 투약은 AI 없이 처리해요. 복잡한 문장만 설치한 모델이 기기에서 해석해요. 대화·투약·검사 정보는 외부 AI 서버로 보내지 않아요. 최근 대화 200개와 작성 중인 입력은 기기에 보관해요.", size = HlSize.t12, color = c.muted)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         HlTextAction("단축어 목록 ${chat.memoryCount + ChatShortcut.entries.size}개", chat::listMemories)
                         ChatShortcut.entries.forEach { shortcut -> HlTextAction(shortcut.label, { chat.runShortcut(shortcut) }) }
                     }
                     if (setup != null) {
-                        HlTextAction(if (ui.connected) "채팅 연결 상태" else "채팅 설치·로그인 가이드", setup::open)
-                        if (!ui.connected) HlText("Claude 채팅 꺼짐 · 설치·구독 확인 후 사용할 수 있어요. 기본 조회 단축어는 바로 사용해요.", size = HlSize.t12, color = c.muted)
-                    } else if (!ui.connected) {
-                        HlText("S23에 설치·로그인한 Claude Code와 연결해요. Termux의 외부 앱 실행 설정과 명령 실행 권한이 필요해요.", size = HlSize.t14)
-                        HlButton("Claude 구독 연결 사용", {
-                            if (TermuxChat.permitted(context)) chat.connect() else permission.launch(TermuxChat.PERMISSION)
-                        }, enabled = TermuxChat.installed(context))
-                        if (!TermuxChat.installed(context)) HlText("Termux 실행 환경을 먼저 준비해 주세요.", size = HlSize.t14)
-                        if (permissionDenied) HlButton("앱 권한 설정 열기", {
-                            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri()))
-                        }, kind = HlButtonKind.Secondary)
+                        HlTextAction("오프라인 AI 모델 관리", setup::open)
+                        HlText(if (ui.connected) "모델 설치됨 · 처음 사용할 때 불러와요" else "모델 미설치 · 기본 조회와 명확한 기록은 바로 사용해요", size = HlSize.t12, color = c.muted)
                     }
                 }
             }
@@ -96,7 +72,6 @@ fun ChatScreen(chat: ChatSession, back: () -> Unit, setup: com.hormonelog.app.ch
         }
         Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ui.conversationWarning?.let { HlText(it, size = HlSize.t12, color = c.danger) }
-            if (!ui.connected && setup != null) HlTextAction("연결 다시 확인 · 대화와 입력은 유지돼요", { setup.open(); setup.start() })
             if (ui.canUndo) HlButton("직전 채팅 등록 되돌리기", chat::undo, kind = HlButtonKind.Secondary, enabled = !ui.busy)
             if (ui.saveFailed) HlButton("저장 재시도", chat::retrySave, enabled = !ui.busy)
             if (ui.busy && !ui.saving) HlButton("응답 취소", chat::cancel, kind = HlButtonKind.Secondary)

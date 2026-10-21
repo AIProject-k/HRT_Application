@@ -29,8 +29,8 @@ android {
         applicationId = "com.hormonelog.app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -78,6 +78,7 @@ dependencies {
     implementation(project(":core:evidence"))
     implementation(project(":core:model-engine"))
     implementation(project(":core:data"))
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.18.0")
 
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
