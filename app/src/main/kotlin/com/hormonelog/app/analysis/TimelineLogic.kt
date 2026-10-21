@@ -135,6 +135,9 @@ object TimelineLogic {
                 if (gel) add("곡선 제외 · 모델 없음")
                 changed[d.id]?.let(::add)
                 d.site?.let { add(it.label) }
+                if (d.drug == Drug.PROGESTERONE_MICRONIZED) {
+                    d.p4Context?.let { add("${it.product.label} · ${it.meal.label}") }
+                }
                 d.note?.let(::add)
             }
             TimelineRow(
@@ -161,12 +164,14 @@ object TimelineLogic {
         labs.map { l ->
             val e2 = l.analytes.firstOrNull { it.analyte == Analyte.ESTRADIOL }
             val tt = l.analytes.firstOrNull { it.analyte == Analyte.TOTAL_TESTOSTERONE }
+            val p4 = l.analytes.firstOrNull { it.analyte == Analyte.PROGESTERONE }
             val title = listOfNotNull(
+                p4?.let { "P4 ${plainNumber(it.reportedValue)} ${it.reportedUnit}" },
                 e2?.let { "E2 ${plainNumber(it.reportedValue)} ${it.reportedUnit}" },
                 tt?.let { "TT ${plainNumber(it.reportedValue)} ${it.reportedUnit}" },
             ).joinToString(" · ")
             val at = l.collectedAt
-            val since = at?.let { t -> Analysis.lastEstrogenBefore(doses, t)?.let { (t.toEpochMilli() - it.occurredAt.toEpochMilli()) / 86_400_000.0 } }
+            val since = if (e2 == null && tt == null) null else at?.let { t -> Analysis.lastEstrogenBefore(doses, t)?.let { (t.toEpochMilli() - it.occurredAt.toEpochMilli()) / 86_400_000.0 } }
             val cal = calibration.labs[l.id]
             val parts = buildList {
                 when {
@@ -175,7 +180,7 @@ object TimelineLogic {
                     else -> {
                         if (since != null) add("투약 후 ${fmt.hoursSince(since * 24)}")
                         val used = (cal?.e2?.used == true) || (cal?.tt?.used == true)
-                        add(if (used) "보정에 사용" else "보정 제외")
+                        add(if (e2 == null && tt == null && p4 != null) "P4는 보정하지 않아요" else if (used) "보정에 사용" else "보정 제외")
                     }
                 }
                 if (l.assay != Assay.UNKNOWN) add(l.assay.label)

@@ -3,7 +3,7 @@ package com.hormonelog.core.modelengine
 import com.hormonelog.core.domain.DoseEvent
 import java.time.Instant
 
-enum class Hormone { E2, TOTAL_T }
+enum class Hormone { E2, TOTAL_T, P4 }
 
 data class EstimatePoint(
     val at: Instant,

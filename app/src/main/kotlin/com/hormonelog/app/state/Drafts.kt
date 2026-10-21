@@ -53,6 +53,7 @@ data class DoseDraft(
     val amountFilled: Boolean = false,
     val patchStrength: Double = 50.0,
     val patchCycle: PatchCycle = PatchCycle.TWICE_WEEKLY,
+    val p4Context: com.hormonelog.core.domain.P4Context = com.hormonelog.core.domain.P4Context(),
     val time: DoseTime = DoseTime.NOW,
     val pickedMillis: Long? = null,
     val site: InjectionSite? = null,
@@ -105,6 +106,10 @@ data class LabDraft(
     val editingId: UUID? = null,
     val e2: String = "",
     val tt: String = "",
+    val p4: String = "",
+    val p4Unit: com.hormonelog.core.domain.P4Unit = com.hormonelog.core.domain.P4Unit.NG_ML,
+    /** Imported units remain unchanged until the user explicitly chooses a known unit. */
+    val p4OriginalUnit: String? = null,
     val e2Unit: E2Unit = E2Unit.PG_ML,
     val ttUnit: TUnit = TUnit.NG_DL,
     val draw: DrawChoice = DrawChoice.NOW,
@@ -119,6 +124,9 @@ data class LabDraft(
 
     val e2Error: String? get() = valueError(e2)
     val ttError: String? get() = valueError(tt)
+    val p4Value: Double? get() = p4.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+    val p4Error: String? get() = valueError(p4)
+    val p4UnitLabel: String get() = p4OriginalUnit ?: p4Unit.label
 
     private fun valueError(text: String): String? {
         if (text.isBlank()) return null
@@ -132,16 +140,20 @@ data class LabDraft(
 
     /** At least one value above zero, and nothing malformed beside it. */
     val canSave: Boolean
-        get() = e2Error == null && ttError == null && ((e2Value ?: 0.0) > 0.0 || (ttValue ?: 0.0) > 0.0)
+        get() = e2Error == null && ttError == null && p4Error == null && ((e2Value ?: 0.0) > 0.0 || (ttValue ?: 0.0) > 0.0 || p4Value != null)
 
     companion object {
         fun of(l: LabResult, e2Unit: E2Unit, ttUnit: TUnit): LabDraft {
             val e2 = l.analytes.firstOrNull { it.analyte == Analyte.ESTRADIOL }
             val tt = l.analytes.firstOrNull { it.analyte == Analyte.TOTAL_TESTOSTERONE }
+            val p4 = l.analytes.firstOrNull { it.analyte == Analyte.PROGESTERONE }
             return LabDraft(
                 editingId = l.id,
                 e2 = e2?.reportedValue?.let(::plainNumber).orEmpty(),
                 tt = tt?.reportedValue?.let(::plainNumber).orEmpty(),
+                p4 = p4?.reportedValue?.let(::plainNumber).orEmpty(),
+                p4Unit = com.hormonelog.core.domain.P4Unit.entries.firstOrNull { it.label.equals(p4?.reportedUnit, true) } ?: com.hormonelog.core.domain.P4Unit.NG_ML,
+                p4OriginalUnit = p4?.reportedUnit?.takeIf { raw -> com.hormonelog.core.domain.P4Unit.entries.none { it.label.equals(raw, true) } },
                 e2Unit = E2Unit.entries.firstOrNull { it.label.equals(e2?.reportedUnit, ignoreCase = true) } ?: e2Unit,
                 ttUnit = TUnit.entries.firstOrNull { it.label.equals(tt?.reportedUnit, ignoreCase = true) } ?: ttUnit,
                 draw = if (l.collectedAt == null) DrawChoice.UNKNOWN else DrawChoice.PICK,
@@ -189,15 +201,16 @@ data class Combo(
     val patchCycle: PatchCycle?,
     val uses: Int,
     val last: Instant,
+    val p4Context: com.hormonelog.core.domain.P4Context? = null,
 )
 
 /** Most-used combinations of the last [days] days (all time when nothing is recent), most-used first. */
 fun frequentCombos(doses: List<DoseEvent>, now: Instant, days: Long = 30, limit: Int = 3): List<Combo> {
     fun build(list: List<DoseEvent>) = list
-        .groupBy { listOf(it.drug, it.route, it.amountEntered, it.enteredUnit) }
+        .groupBy { listOf(it.drug, it.route, it.amountEntered, it.enteredUnit, it.p4Context?.product) }
         .map { (_, g) ->
             val newest = g.maxBy { it.occurredAt }
-            Combo(newest.drug, newest.route, newest.amountEntered, newest.enteredUnit, newest.patchCycle, g.size, newest.occurredAt)
+            Combo(newest.drug, newest.route, newest.amountEntered, newest.enteredUnit, newest.patchCycle, g.size, newest.occurredAt, newest.p4Context?.forNewAdministration())
         }
         .sortedWith(compareByDescending<Combo> { it.uses }.thenByDescending { it.last })
     val taken = doses.filter { it.status.wasTaken }
@@ -259,6 +272,7 @@ data class ScheduleDraft(
     val amountText: String = "",
     val patchStrength: Double = 50.0,
     val patchCycle: PatchCycle = PatchCycle.TWICE_WEEKLY,
+    val p4Context: com.hormonelog.core.domain.P4Context = com.hormonelog.core.domain.P4Context(),
     val interval: IntervalChoice = IntervalChoice.WEEKLY,
     val customDays: String = "",
     val weekdays: Set<DayOfWeek> = emptySet(),

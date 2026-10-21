@@ -46,6 +46,11 @@ data class LabAnalyteValue(
                     "nmol/l" -> reportedValue * NGDL_PER_NMOL_T
                     else -> null
                 }
+                Analyte.PROGESTERONE -> when (u) {
+                    "ng/ml", "µg/l", "ug/l" -> reportedValue
+                    "nmol/l" -> reportedValue / 3.18
+                    else -> null
+                }
             }
         }
 

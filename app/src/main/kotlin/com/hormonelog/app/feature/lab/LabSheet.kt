@@ -171,6 +171,21 @@ fun LabSheet(s: AppState, fmt: Fmt, actions: LabSheetActions) {
                 }
             }
 
+            Field(label = "P4 · 프로게스테론 실측 · 선택", diamond = true) {
+                HlTextField(
+                    value = d.p4, onValueChange = { t -> actions.edit { it.copy(p4 = t.take(32)) } },
+                    label = "P4 실측값", placeholder = "검사지 숫자", error = d.p4Error != null,
+                )
+                d.p4Error?.let { HlFieldError(it) }
+                d.p4OriginalUnit?.let { HlText("저장된 단위: $it · 검사지 확인 후 단위를 선택해 주세요", size = HlSize.t12, color = c.orange) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    com.hormonelog.core.domain.P4Unit.entries.forEach { u ->
+                        HlChip(u.label, d.p4OriginalUnit == null && d.p4Unit == u, { actions.edit { it.copy(p4Unit = u, p4OriginalUnit = null) } }, minHeight = 44.dp, size = HlSize.t13, padding = chipPad)
+                    }
+                }
+                HlText("P4 실측은 체내 총농도예요. 복용분 예상과 다를 수 있고, 자동 보정에는 쓰지 않아요.", size = HlSize.t12, color = c.muted)
+            }
+
             Field("검사 방식 · 선택") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(Assay.LC_MS_MS, Assay.IMMUNOASSAY, Assay.UNKNOWN).forEach { a ->

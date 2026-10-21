@@ -60,6 +60,7 @@ fun LabResultScreen(summary: LabResultSummary, fmt: Fmt, onDone: () -> Unit, onE
             HlText(
                 when {
                     at == null -> "채혈 시각을 모르는 검사예요"
+                    summary.e2 == null && summary.tt == null -> "${fmt.dateTime(at)} 채혈"
                     summary.hoursSinceDose != null -> "${fmt.dateTime(at)} 채혈 · 마지막 투약 후 ${fmt.hoursSince(summary.hoursSinceDose)}"
                     summary.beforeFirstDose -> "${fmt.dateTime(at)} 채혈 · 첫 투약 전이에요"
                     else -> "${fmt.dateTime(at)} 채혈"
@@ -68,7 +69,12 @@ fun LabResultScreen(summary: LabResultSummary, fmt: Fmt, onDone: () -> Unit, onE
             )
             summary.e2?.let { E2Block(it, summary, fmt) }
             summary.tt?.let { TtBlock(it) }
-            if (summary.e2 == null && summary.tt == null) HlText("저장된 값이 없어요", size = HlSize.t14, color = c.muted)
+            summary.p4?.let { p ->
+                HlText("P4 실측 ${com.hormonelog.app.state.plainNumber(p.reported)} ${p.unit}", size = HlSize.t18, weight = FontWeight.Bold, color = c.yellow)
+                HlText(p.expectedNgMl?.let { "그 시점 복용분 예상 ${"%.2f".format(it)} ng/mL · 실험적 근사" } ?: "그 시점 P4 복용분 예상값 없음", size = HlSize.t14, color = c.orange)
+                HlText("실측은 체내 총농도이며 복용분 예상과 직접 비교·자동 보정하지 않아요.", size = HlSize.t13, color = c.muted)
+            }
+            if (summary.e2 == null && summary.tt == null && summary.p4 == null) HlText("저장된 값이 없어요", size = HlSize.t14, color = c.muted)
         }
         HlButton("확인", onDone, Modifier.fillMaxWidth())
         if (onEdit != null) HlButton("고치기", onEdit, Modifier.fillMaxWidth(), kind = com.hormonelog.app.ui.kit.HlButtonKind.Text, minHeight = 48.dp, content = c.text)

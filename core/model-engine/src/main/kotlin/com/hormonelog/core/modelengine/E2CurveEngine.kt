@@ -1,7 +1,7 @@
 package com.hormonelog.core.modelengine
 
 import com.hormonelog.core.domain.DoseEvent
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.evidence.EvidenceBundle
 import java.time.Instant
 import kotlin.math.max
@@ -43,7 +43,7 @@ class E2CurveEngine(private val bundle: EvidenceBundle) {
         /** Personal calibration per route group; empty = the population curve. */
         adjustments: Adjustments = emptyMap(),
     ): EstimateResult {
-        val administered = doses.filter { it.status.wasTaken }
+        val administered = doses.filter { it.status.wasTaken && it.drug != com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED }
         if (administered.isEmpty()) return EstimateResult.Unavailable(ModelUnavailableReason.NO_DATA)
 
         val excluded = ArrayList<ExcludedDose>()
@@ -52,12 +52,12 @@ class E2CurveEngine(private val bundle: EvidenceBundle) {
             val why = models.exclusionOf(d)
             if (why != null) excluded += ExcludedDose(d, why) else modelled += d
         }
-        val estrogens = administered.filterNot { it.drug.isAntiandrogen }
-        if (estrogens.isNotEmpty() && modelled.none { !it.drug.isAntiandrogen }) {
+        val estrogens = administered.filter { it.drug.isEstrogen }
+        if (estrogens.isNotEmpty() && modelled.none { it.drug.isEstrogen }) {
             return EstimateResult.Unavailable(ModelUnavailableReason.ROUTE_UNSUPPORTED)
         }
 
-        val estrogenRoutes = modelled.filterNot { it.drug.isAntiandrogen }.map { it.route }.toSet()
+        val estrogenRoutes = modelled.filter { it.drug.isEstrogen }.map { it.route }.toSet()
         val frac = estrogenRoutes.maxOfOrNull { fractionFor(it, adjustments) } ?: DEFAULT_FRACTION
         val scaleOf = modelled.associateWith { adjustments[it.route.calibrationGroup()]?.scale ?: 1.0 }
         val span = (to.toEpochMilli() - from.toEpochMilli()).toDouble()

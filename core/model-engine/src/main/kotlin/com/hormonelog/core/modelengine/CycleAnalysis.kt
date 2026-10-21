@@ -1,7 +1,7 @@
 package com.hormonelog.core.modelengine
 
 import com.hormonelog.core.domain.DoseEvent
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import java.time.Duration
 import java.time.Instant
 
@@ -51,7 +51,7 @@ class CycleAnalysis(private val engine: E2CurveEngine) {
             ?.series?.points?.takeIf { it.isNotEmpty() }
 
     private fun window(doses: List<DoseEvent>, at: Instant): Pair<Instant, Instant>? {
-        val candidates = doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen }
+        val candidates = doses.filter { it.status.wasTaken && it.drug.isEstrogen }
         val left = engine.exclusionsIn(candidates).map { it.dose.id }.toSet()
         val estrogen = candidates.filter { it.id !in left }
         val previous = estrogen.filter { !it.occurredAt.isAfter(at) }.maxByOrNull { it.occurredAt } ?: return null

@@ -150,6 +150,7 @@ object Reminders {
                 status = DoseStatus.ADMINISTERED,
                 source = RecordSource.SCHEDULE,
                 patchCycle = regimen.patchCycle,
+                p4Context = regimen.p4Context?.forNewAdministration(),
             )
             val vm = ViewModelHolder.current
             if (vm != null) {

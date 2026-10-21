@@ -6,7 +6,7 @@ import com.hormonelog.app.feature.common.label
 import com.hormonelog.app.feature.common.shortLabel
 import com.hormonelog.app.state.plainNumber
 import com.hormonelog.core.domain.DoseEvent
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.CalibrationGroup
 import com.hormonelog.core.modelengine.calibrationGroup
 import java.time.Instant
@@ -28,7 +28,7 @@ object SteadyState {
     }
 
     fun find(doses: List<DoseEvent>, now: Instant, fmt: Fmt): SteadyStateNotice? {
-        val taken = doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen && it.route.calibrationGroup() != null && !it.occurredAt.isAfter(now) }
+        val taken = doses.filter { it.status.wasTaken && it.drug.isEstrogen && it.route.calibrationGroup() != null && !it.occurredAt.isAfter(now) }
             .sortedBy { it.occurredAt }
         val latest = taken.lastOrNull() ?: return null
 

@@ -67,21 +67,28 @@ fun chartModelFor(
     guide: Boolean,
 ): ChartModel {
     val isT = series == HormoneSeries.TT
-    val analyte = if (isT) Analyte.TOTAL_TESTOSTERONE else Analyte.ESTRADIOL
+    val isP4 = series == HormoneSeries.P4
+    val analyte = when (series) {
+        HormoneSeries.E2 -> Analyte.ESTRADIOL
+        HormoneSeries.TT -> Analyte.TOTAL_TESTOSTERONE
+        HormoneSeries.P4 -> Analyte.PROGESTERONE
+    }
     val chartLabs = labs.mapNotNull { lab ->
         val at = lab.collectedAt ?: return@mapNotNull null
         val value = lab.analytes.firstOrNull { it.analyte == analyte }?.let(Analysis::canonical) ?: return@mapNotNull null
-        val used = curves.calibration.labs[lab.id]?.let { if (isT) it.tt?.used else it.e2?.used } == true
+        val used = !isP4 && curves.calibration.labs[lab.id]?.let { if (isT) it.tt?.used else it.e2?.used } == true
         ChartLab(at, value, used)
     }
-    val ticks = doses.filter { it.occurredAt in from..to }.map {
+    fun relevant(d: DoseEvent) = if (isP4) d.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED
+        else d.drug != com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED
+    val ticks = doses.filter { it.occurredAt in from..to && relevant(it) }.map {
         ChartDose(it.occurredAt, if (it.status == DoseStatus.SKIPPED) TickState.MISSED else TickState.TAKEN, it.drug.isAntiandrogen)
-    } + curves.planned.filter { it.occurredAt in from..to }.map { ChartDose(it.occurredAt, TickState.PLANNED, it.drug.isAntiandrogen) }
+    } + curves.planned.filter { it.occurredAt in from..to && relevant(it) }.map { ChartDose(it.occurredAt, TickState.PLANNED, it.drug.isAntiandrogen) }
     return ChartModel(
-        curve = if (isT) curves.tt else curves.e2,
+        curve = when (series) { HormoneSeries.E2 -> curves.e2; HormoneSeries.TT -> curves.tt; HormoneSeries.P4 -> curves.p4 },
         from = from, to = to, now = now,
-        labs = chartLabs, doses = ticks, isTotalT = isT,
-        guide = if (guide && !isT) GUIDELINE_E2 else null,
+        labs = chartLabs, doses = ticks, isTotalT = isT, isP4 = isP4,
+        guide = if (guide && series == HormoneSeries.E2) GUIDELINE_E2 else null,
     )
 }
 

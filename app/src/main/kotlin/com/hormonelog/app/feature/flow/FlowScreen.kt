@@ -1,5 +1,7 @@
 package com.hormonelog.app.feature.flow
 
+import com.hormonelog.app.ui.kit.HlTextAction
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -71,7 +73,7 @@ import com.hormonelog.app.ui.theme.HlRadius
 import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
 import com.hormonelog.core.domain.Route
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.CalibrationResult
 import java.time.Instant
 import java.time.LocalDate
@@ -89,6 +91,7 @@ class FlowActions(
 )
 
 private val RANGE_CHIPS = listOf(
+    ChartRange.DAY to "24시간",
     ChartRange.WEEK to "1주", ChartRange.MONTH to "1개월", ChartRange.QUARTER to "3개월", ChartRange.HALF to "6개월",
     ChartRange.YEAR to "1년", ChartRange.ALL to "전체", ChartRange.CUSTOM to "직접",
 )
@@ -106,7 +109,8 @@ private fun window(s: AppState, fmt: Fmt): Window {
         else -> ui.range.days ?: 30
     }
     val future = if (spanDays <= 30) 7 else (spanDays * 0.1).roundToInt().coerceAtMost(30)
-    return Window(now.minusSeconds(spanDays * 86_400L), now.plusSeconds(future * 86_400L), spanDays)
+    val futureSeconds = if (ui.range == ChartRange.DAY) 6 * 3600L else future * 86_400L
+    return Window(now.minusSeconds(spanDays * 86_400L), now.plusSeconds(futureSeconds), spanDays)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -146,7 +150,7 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
         }
 
         HlSegmented(
-            items = listOf(SegItem(HormoneSeries.E2, "E2", content = c.teal), SegItem(HormoneSeries.TT, "Total T", content = c.blue)),
+            items = listOf(SegItem(HormoneSeries.E2, "E2", content = c.teal), SegItem(HormoneSeries.TT, "Total T", content = c.blue), SegItem(HormoneSeries.P4, "P4", content = c.orange)),
             selected = ui.series, onSelect = actions.series, minHeight = 42.dp, size = HlSize.t14,
         )
 
@@ -169,12 +173,12 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
         }
 
         when {
-            isE2.not() && curves?.ttHidden == true -> TtHiddenCard(actions.gonadal)
-            curves != null && curves.hasE2.not() && s.doses.none { it.status.wasTaken } -> EmptyChartCard(actions.record)
+            ui.series == HormoneSeries.TT && curves?.ttHidden == true -> TtHiddenCard(actions.gonadal)
+            ui.series != HormoneSeries.P4 && curves != null && curves.hasE2.not() && s.doses.none { it.status.wasTaken } -> EmptyChartCard(actions.record)
             else -> ChartCard(s, fmt, curves, w, actions)
         }
 
-        if (curves != null) {
+        if (curves != null && ui.series != HormoneSeries.P4) {
             val notices = buildList<@Composable () -> Unit> {
                 if (curves.excluded.isNotEmpty()) {
                     val first = curves.excluded.first()
@@ -193,7 +197,7 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
                         }
                     }
                 }
-                val recent = s.doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen && it.occurredAt.isAfter(now.minusSeconds(60L * 86_400L)) }
+                val recent = s.doses.filter { it.status.wasTaken && it.drug.isEstrogen && it.occurredAt.isAfter(now.minusSeconds(60L * 86_400L)) }
                 if (!isE2 && recent.isNotEmpty() && recent.all { it.route == Route.ORAL || it.route == Route.SUBLINGUAL } && !curves.ttHidden) {
                     add { HlBanner(HlNotice.Warn) { HlText("경구·설하만 쓰면 T 예측이 낮게 나올 수 있어요.", size = HlSize.t13, lineHeight = 1.5f) } }
                 }
@@ -221,7 +225,7 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
             }
         }
 
-        if (!ratios.isNullOrEmpty()) {
+        if (ui.series != HormoneSeries.P4 && !ratios.isNullOrEmpty()) {
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card).padding(start = 12.dp, top = 14.dp, end = 12.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -234,6 +238,15 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
             }
         }
 
+        if (ui.series == HormoneSeries.P4) {
+            HlBanner(HlNotice.Warn) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HlText("P4 복용분 예상 · 실험적 모델", size = HlSize.t14, weight = FontWeight.Bold, color = c.orange)
+                    HlText(com.hormonelog.core.evidence.ProgesteroneEvidence.LIMITS, size = HlSize.t13, lineHeight = 1.5f)
+                    HlTextAction("모델 상태·근거 보기", actions.model)
+                }
+            }
+        }
         HlDisclaimer(Modifier.padding(top = 4.dp))
     }
 
@@ -264,13 +277,14 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
     val ui = s.flow
     val isE2 = ui.series == HormoneSeries.E2
     val model = if (curves != null) chartModelFor(ui.series, curves, s.doses, s.labs, w.from, w.to, fmt.now, guide = ui.guide) else null
-    val unit = if (isE2) "pg/mL" else "ng/dL"
-    val name = if (isE2) "E2" else "Total T"
-    val accent = if (isE2) c.teal else c.blue
+    val isP4 = ui.series == HormoneSeries.P4
+    val unit = if (isP4) "ng/mL" else if (isE2) "pg/mL" else "ng/dL"
+    val name = if (isP4) "P4 복용분" else if (isE2) "E2" else "Total T"
+    val accent = if (isP4) c.orange else if (isE2) c.teal else c.blue
 
     // The line above the chart follows the finger; at rest it reads "now".
     val at = if (model != null && ui.scrub != null) scrubInstant(model, ui.scrub) else fmt.now
-    val point = model?.curve?.pointAt(at)
+    val point = if (isP4 && model?.curve != null) Analysis.p4At(s.doses.filter { !it.occurredAt.isAfter(fmt.now) } + (curves?.planned ?: emptyList()), at) else model?.curve?.pointAt(at)
     val near = model?.labs?.minByOrNull { kotlin.math.abs(it.at.toEpochMilli() - at.toEpochMilli()) }
         ?.takeIf { kotlin.math.abs(it.at.toEpochMilli() - at.toEpochMilli()) <= maxOf(0.6 * 86_400_000.0, w.spanDays * 86_400_000.0 / 120) }
     val summary = if (model?.curve != null) {
@@ -291,12 +305,12 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
                 size = HlSize.t12, color = c.muted,
             )
             HlText(
-                if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else "이 시점 예상값 없음",
+                if (point != null && isP4) "예상 $name ${"%.2f".format(point.median)} $unit" else if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else if (isP4) "경구 P4 100–300 mg 복용 기록이 필요해요 · 지원 밖 기록이 함께 있으면 합산 예상은 제공하지 않아요" else "이 시점 예상값 없음",
                 size = HlSize.t16, weight = FontWeight.Bold, color = accent, tabular = true,
             )
             if (near != null) {
                 HlText(
-                    "◆ 실측 ${near.value.roundToInt()} $unit · ${fmt.date(near.at)}${if (near.used) "" else " · 보정 제외"}",
+                    "◆ 실측 ${if (isP4) "%.2f".format(near.value) else near.value.roundToInt().toString()} $unit · ${fmt.date(near.at)}${if (isP4) " · 체내 총농도 · 자동 보정 안 함" else if (near.used) "" else " · 보정 제외"}",
                     size = HlSize.t13, weight = FontWeight.Bold, color = c.yellow,
                 )
             }
@@ -307,11 +321,11 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
             Box(Modifier.fillMaxWidth().aspectRatio(320f / 210f))
         }
         FlowRow(Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            LegendRow("예상 · 범위") { Box(Modifier.size(width = 14.dp, height = 8.dp).clip(RoundedCornerShape(4.dp)).background(if (isE2) c.tealSoft else c.blueSoft).border(2.dp, accent, RoundedCornerShape(4.dp))) }
+            LegendRow(if (isP4) "복용분 근사 · 범위 미산정" else "예상 · 범위") { Box(Modifier.size(width = 14.dp, height = 8.dp).clip(RoundedCornerShape(4.dp)).background(if (isE2) c.tealSoft else c.blueSoft).border(2.dp, accent, RoundedCornerShape(4.dp))) }
             LegendRow("실측") { MeasuredMark(8.dp) }
-            LegendRow("보정 제외") { MeasuredMark(8.dp, hollow = true) }
-            LegendRow("에스트로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.blue)) }
-            LegendRow("항안드로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.violet)) }
+            LegendRow(if (isP4) "자동 보정 안 함" else "보정 제외") { MeasuredMark(8.dp, hollow = true) }
+            LegendRow(if (isP4) "프로게스테론 복용" else "에스트로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.blue)) }
+            if (!isP4) LegendRow("항안드로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.violet)) }
             LegendRow("예정") { Box(Modifier.size(width = 4.dp, height = 10.dp).border(1.2.dp, c.blue)) }
             LegendRow("놓침") { Box(Modifier.size(width = 4.dp, height = 10.dp).border(1.2.dp, c.danger)) }
         }
@@ -321,6 +335,7 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
 }
 
 private fun rangeText(range: ChartRange): String = when (range) {
+    ChartRange.DAY -> "지난 24시간"
     ChartRange.ALL -> "기록 전체"
     ChartRange.CUSTOM -> "직접 고른 기간"
     ChartRange.WEEK -> "지난 1주"

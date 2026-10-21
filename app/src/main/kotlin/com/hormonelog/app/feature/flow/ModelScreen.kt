@@ -39,7 +39,7 @@ import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
 import com.hormonelog.core.domain.Analyte
 import com.hormonelog.core.domain.GonadalStatus
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.CalibrationEngine
 import com.hormonelog.core.modelengine.CalibrationGroup
 import com.hormonelog.core.modelengine.CalibrationResult
@@ -68,13 +68,17 @@ fun ModelScreen(s: AppState, fmt: Fmt, actions: ModelActions) {
     val status = s.settings.gonadalStatus
     val calibration = remember(s.doses, s.labs, status) { Analysis.calibrate(s.doses, s.labs, status) }
     val groupsInUse = remember(s.doses) {
-        CalibrationGroup.entries.filter { g -> s.doses.any { it.status.wasTaken && !it.drug.isAntiandrogen && it.route.calibrationGroup() == g } }
+        CalibrationGroup.entries.filter { g -> s.doses.any { it.status.wasTaken && it.drug.isEstrogen && it.route.calibrationGroup() == g } }
     }
     val lines = remember(s.labs, s.doses, s.regimens, calibration) { labLines(s, calibration, fmt) }
 
     Column(Modifier.fillMaxWidth()) {
         HlTopBar("모델 상태", actions.back)
         ScreenScroll(padding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 0.dp, bottom = 24.dp), gap = 14.dp, bottomInset = true) {
+            if (s.doses.any { it.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED }) {
+                HlText("P4 · 복용분의 실험적 근사", size = HlSize.t16, weight = FontWeight.Bold, color = c.orange)
+                HlText(com.hormonelog.core.evidence.ProgesteroneEvidence.LIMITS, size = HlSize.t13, color = c.muted)
+            }
             HlSectionLabel("경로별 보정")
             if (groupsInUse.isEmpty()) {
                 HlText("투약을 기록하면 경로마다 보정 상태가 여기에 보여요.", size = HlSize.t13, color = c.muted)

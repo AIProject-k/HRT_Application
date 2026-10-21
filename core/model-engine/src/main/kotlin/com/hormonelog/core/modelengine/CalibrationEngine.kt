@@ -5,7 +5,7 @@ import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.GonadalStatus
 import com.hormonelog.core.domain.LabAnalyteValue
 import com.hormonelog.core.domain.LabResult
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.evidence.EvidenceBundle
 import java.time.Duration
 import java.time.Instant
@@ -114,7 +114,7 @@ class CalibrationEngine(bundle: EvidenceBundle) {
         baselineT: Double? = null,
     ): CalibrationResult {
         val taken = doses.filter { it.status.wasTaken }
-        val estrogen = taken.filterNot { it.drug.isAntiandrogen }
+        val estrogen = taken.filter { it.drug.isEstrogen }
         val e2Results = LinkedHashMap<UUID, AnalyteCalibration>()
         val ratiosByGroup = HashMap<CalibrationGroup, MutableList<Pair<UUID, Double>>>()
 

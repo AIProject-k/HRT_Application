@@ -32,6 +32,22 @@ val Drug.label: String
         Drug.ESTRADIOL_GEL -> "에스트라디올 젤"
         Drug.SPIRONOLACTONE -> "스피로노락톤"
         Drug.CYPROTERONE -> "사이프로테론"
+        Drug.PROGESTERONE_MICRONIZED -> "미분화 프로게스테론"
+    }
+
+val com.hormonelog.core.domain.P4Product.label: String
+    get() = when (this) {
+        com.hormonelog.core.domain.P4Product.UNKNOWN -> "제품 모름"
+        com.hormonelog.core.domain.P4Product.UTROGESTAN_SOFT_CAPSULE -> "유트로게스탄 연질캡슐"
+        com.hormonelog.core.domain.P4Product.OTHER -> "다른 제품·제형"
+    }
+
+val com.hormonelog.core.domain.P4Meal.label: String
+    get() = when (this) {
+        com.hormonelog.core.domain.P4Meal.UNKNOWN -> "식사 모름"
+        com.hormonelog.core.domain.P4Meal.FASTING -> "공복"
+        com.hormonelog.core.domain.P4Meal.AFTER_MEAL -> "일반 식후"
+        com.hormonelog.core.domain.P4Meal.HIGH_FAT_MEAL -> "고지방식 후"
     }
 
 /** The short form used in rows and tiles ("EV 5 mg · 주사"). */
@@ -44,6 +60,7 @@ val Drug.shortLabel: String
         Drug.ESTRADIOL_GEL -> "젤"
         Drug.SPIRONOLACTONE -> "스피로노락톤"
         Drug.CYPROTERONE -> "사이프로테론"
+        Drug.PROGESTERONE_MICRONIZED -> "미분화 프로게스테론"
     }
 
 /** What the chip row calls a route; both injections are one "주사" until the sub-choice. */
@@ -253,7 +270,7 @@ val SkipReason.text: String
         SkipReason.UNKNOWN_ROUTE -> "알 수 없는 투여 경로"
         SkipReason.BAD_AMOUNT -> "용량이 0이거나 숫자가 아님"
         SkipReason.BAD_COMBINATION -> "약물과 경로 조합이 맞지 않음"
-        SkipReason.NO_VALUE -> "E2·Total T 값이 모두 비어 있음"
+        SkipReason.NO_VALUE -> "E2·Total T·P4 값이 없거나 숫자 형식이 잘못됨"
     }
 
 val Symptom.label: String

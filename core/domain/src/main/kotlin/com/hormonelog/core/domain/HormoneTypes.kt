@@ -37,7 +37,16 @@ enum class Drug {
     ESTRADIOL_GEL,
     SPIRONOLACTONE,
     CYPROTERONE,
+    PROGESTERONE_MICRONIZED,
 }
+
+/** Explicit membership: non-antiandrogens now also include progesterone. */
+val Drug.isEstrogen: Boolean
+    get() = when (this) {
+        Drug.ESTRADIOL_VALERATE, Drug.ESTRADIOL_CYPIONATE, Drug.ESTRADIOL_TABLET,
+        Drug.ESTRADIOL_PATCH, Drug.ESTRADIOL_GEL -> true
+        else -> false
+    }
 
 /** Anti-androgens add nothing to the E2 curve; they only act on the Total T curve. */
 val Drug.isAntiandrogen: Boolean
@@ -54,7 +63,7 @@ val Drug.allowedRoutes: List<Route>
         Drug.ESTRADIOL_TABLET -> listOf(Route.ORAL, Route.SUBLINGUAL)
         Drug.ESTRADIOL_PATCH -> listOf(Route.PATCH)
         Drug.ESTRADIOL_GEL -> listOf(Route.GEL)
-        Drug.SPIRONOLACTONE, Drug.CYPROTERONE -> listOf(Route.ORAL)
+        Drug.SPIRONOLACTONE, Drug.CYPROTERONE, Drug.PROGESTERONE_MICRONIZED -> listOf(Route.ORAL)
     }
 
 /** Units that make sense for a route; a patch is rated in µg released per day. */
@@ -104,6 +113,7 @@ enum class PatchCycle {
 enum class Analyte {
     ESTRADIOL,
     TOTAL_TESTOSTERONE,
+    PROGESTERONE,
 }
 
 /** Affects the testosterone baseline used by the TT model (설계서 §3.1). */

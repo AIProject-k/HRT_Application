@@ -4,7 +4,7 @@ import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.Drug
 import com.hormonelog.core.domain.PatchCycle
 import com.hormonelog.core.domain.Route
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.evidence.EvidenceBundle
 
 /**
@@ -29,7 +29,7 @@ class E2RouteModels(private val bundle: EvidenceBundle) {
      * (they add no E2) but that is not an exclusion worth reporting, so they answer null.
      */
     fun exclusionOf(event: DoseEvent): DoseExclusion? {
-        if (event.drug.isAntiandrogen) return null
+        if (!event.drug.isEstrogen) return null
         if (!bundle.supports(event.route)) return DoseExclusion.NO_MODEL
         return when (event.route) {
             Route.IM_INJECTION, Route.SC_INJECTION ->
@@ -52,7 +52,7 @@ class E2RouteModels(private val bundle: EvidenceBundle) {
     fun contribution(event: DoseEvent, elapsedDays: Double): Double? {
         if (elapsedDays <= 0.0) return 0.0
         // Non-estrogen medications contribute nothing to the E2 curve.
-        if (event.drug.isAntiandrogen) return 0.0
+        if (!event.drug.isEstrogen) return 0.0
         if (exclusionOf(event) != null) return null
         return when (event.route) {
             Route.IM_INJECTION, Route.SC_INJECTION -> {

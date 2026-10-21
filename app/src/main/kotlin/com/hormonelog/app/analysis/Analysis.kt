@@ -8,7 +8,7 @@ import com.hormonelog.core.domain.LabAnalyteValue
 import com.hormonelog.core.domain.LabResult
 import com.hormonelog.core.domain.RecordSource
 import com.hormonelog.core.domain.Regimen
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.evidence.EvidenceBundleV1
 import com.hormonelog.core.modelengine.CalibrationEngine
 import com.hormonelog.core.modelengine.CalibrationResult
@@ -25,7 +25,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 
-/** E2 and Total T curves for one chart window, plus what was left out and why. */
+/** E2, Total T and experimental oral P4 curves for one chart window. */
 data class Curves(
     val e2: EstimateSeries?,
     val tt: EstimateSeries?,
@@ -36,6 +36,7 @@ data class Curves(
     val calibration: CalibrationResult,
     /** Planned doses beyond now, for the chart's hollow ticks. */
     val planned: List<DoseEvent>,
+    val p4: EstimateSeries? = null,
 ) {
     val hasE2: Boolean get() = e2 != null
 }
@@ -46,6 +47,7 @@ object Analysis {
     private val bundle = EvidenceBundleV1.bundle
     private val e2Engine = E2CurveEngine(bundle)
     private val ttEngine = TtSuppressionEngine(bundle)
+    private val p4Engine = com.hormonelog.core.modelengine.ProgesteroneEngine(com.hormonelog.core.evidence.ProgesteroneEvidence.bundle)
     private val calibrationEngine = CalibrationEngine(bundle)
     private val cycleAnalysis = CycleAnalysis(e2Engine)
 
@@ -79,6 +81,7 @@ object Analysis {
                     status = DoseStatus.ADMINISTERED,
                     source = RecordSource.SCHEDULE,
                     patchCycle = r.patchCycle,
+                    p4Context = r.p4Context,
                 )
             }
         }.sortedBy { it.occurredAt }
@@ -117,8 +120,11 @@ object Analysis {
             ttHidden = status == GonadalStatus.DECLINED,
             calibration = calibration,
             planned = planned,
+            p4 = (p4Engine.curve(taken.filter { !it.occurredAt.isAfter(now) } + planned, from, to, samples) as? EstimateResult.Available)?.series,
         )
     }
+
+    fun p4At(doses: List<DoseEvent>, at: Instant): EstimatePoint? = p4Engine.estimateAt(doses, at)
 
     /** Median and interval of E2 right now (or at [at]), calibrated; null with no usable dose. */
     fun e2At(doses: List<DoseEvent>, regimens: List<Regimen>, calibration: CalibrationResult, at: Instant, now: Instant, zone: ZoneId): EstimatePoint? {
@@ -157,5 +163,5 @@ object Analysis {
 
     /** The estrogen dose before [at] that a blood draw is measured from, if any. */
     fun lastEstrogenBefore(doses: List<DoseEvent>, at: Instant): DoseEvent? =
-        doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen && !it.occurredAt.isAfter(at) }.maxByOrNull { it.occurredAt }
+        doses.filter { it.status.wasTaken && it.drug.isEstrogen && !it.occurredAt.isAfter(at) }.maxByOrNull { it.occurredAt }
 }

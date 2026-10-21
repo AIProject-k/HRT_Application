@@ -1,5 +1,7 @@
 package com.hormonelog.app.feature.dose
 
+import com.hormonelog.core.domain.Drug
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -173,6 +175,12 @@ fun DoseSheet(doses: List<DoseEvent>, draft: DoseDraft, fmt: Fmt, actions: DoseS
                             HlChip(l, draft.route == r, { actions.route(r) })
                         }
                     }
+                }
+            }
+            if (draft.drug == Drug.PROGESTERONE_MICRONIZED) {
+                HlText("경구 미분화 연질캡슐용이에요. 100–300 mg만 복용분 예상에 쓰며, 그 밖의 용량도 기록은 가능해요. 제품·식사에 따른 차이와 체내 기저치는 반영하지 않아요.", size = HlSize.t13, color = c.muted)
+                com.hormonelog.app.feature.common.P4ContextFields(draft.p4Context, draft.repeat) { context ->
+                    actions.edit { it.copy(p4Context = context) }
                 }
             }
             Field("약물") {

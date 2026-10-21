@@ -151,9 +151,16 @@ object ReportLogic {
         val tt = s.labs.filter { l -> !l.isBaseline && l.collectedAt?.let(inPeriod) == true }.sortedByDescending { it.collectedAt }.mapNotNull { l ->
             l.analytes.firstOrNull { it.analyte == Analyte.TOTAL_TESTOSTERONE }?.let { "${fmt.date(l.collectedAt!!)} ${plainNumber(it.reportedValue)} ${it.reportedUnit}" }
         }.take(6)
+        val p4 = s.labs.filter { l -> !l.isBaseline && l.collectedAt?.let(inPeriod) == true }
+            .sortedByDescending { it.collectedAt }.mapNotNull { l ->
+                l.analytes.firstOrNull { it.analyte == Analyte.PROGESTERONE }?.let {
+                    "${fmt.date(l.collectedAt!!)} ${plainNumber(it.reportedValue)} ${it.reportedUnit}"
+                }
+            }.take(6)
         return buildString {
             append("E2 단위 pg/mL")
             if (tt.isNotEmpty()) append(" · Total T 실측: ${tt.joinToString(", ")}")
+            if (p4.isNotEmpty()) append(" · P4 실측(체내 총농도): ${p4.joinToString(", ")}")
         }
     }
 

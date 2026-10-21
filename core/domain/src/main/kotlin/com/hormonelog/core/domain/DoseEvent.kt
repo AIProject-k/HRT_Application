@@ -24,6 +24,7 @@ data class DoseEvent(
     val site: InjectionSite? = null,
     /** Only for a patch: how often it is changed. */
     val patchCycle: PatchCycle? = null,
+    val p4Context: P4Context? = null,
 ) {
     /**
      * µg/day for a patch, or null when the entered amount cannot be read as one

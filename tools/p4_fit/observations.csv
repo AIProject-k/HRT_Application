@@ -1,0 +1,15 @@
+study,series,product,meal,dose_mg,hour,x_px,y_px,value_pg_ml
+apolikhina2023,reference,Utrogestan,fasted,200,0,50,457.5,285.8559
+apolikhina2023,reference,Utrogestan,fasted,200,0.3333333333,52,443,517.9475
+apolikhina2023,reference,Utrogestan,fasted,200,0.6666666667,54,428,959.7163
+apolikhina2023,reference,Utrogestan,fasted,200,1.3333333333,57,415,1637.8937
+apolikhina2023,reference,Utrogestan,fasted,200,2,61.5,409,2096.1799
+apolikhina2023,reference,Utrogestan,fasted,200,2.6666666667,66.5,415.5,1604.6950
+apolikhina2023,reference,Utrogestan,fasted,200,3.5,70.5,420.5,1306.8259
+apolikhina2023,reference,Utrogestan,fasted,200,4,74,425,1085.7111
+apolikhina2023,reference,Utrogestan,fasted,200,5,79.5,436,690.6646
+apolikhina2023,reference,Utrogestan,fasted,200,6,85.5,445,477.0583
+apolikhina2023,reference,Utrogestan,fasted,200,8,97.5,464,218.3978
+apolikhina2023,reference,Utrogestan,fasted,200,12,121,475,138.9495
+apolikhina2023,reference,Utrogestan,fasted,200,24,192,490,74.9894
+apolikhina2023,reference,Utrogestan,fasted,200,48,333.5,526.5,16.7332

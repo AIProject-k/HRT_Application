@@ -33,6 +33,8 @@ data class Regimen(
     val timeMinutes: Int? = null,
     /** Only for a patch: how often it is changed. */
     val patchCycle: PatchCycle? = null,
+    /** Expected meal on the plan, not evidence of a meal at a real administration. */
+    val p4Context: P4Context? = null,
 ) {
     val isWeekdayPlan: Boolean get() = weekdays != 0
 
@@ -78,6 +80,7 @@ data class Regimen(
                 note = null,
                 source = source,
                 patchCycle = regimen.patchCycle,
+                p4Context = regimen.p4Context?.forNewAdministration(),
             )
         }
 

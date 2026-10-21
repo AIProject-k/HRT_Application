@@ -44,7 +44,7 @@ import com.hormonelog.core.modelengine.CalibrationGroup
 import kotlin.math.roundToInt
 
 private enum class Part(val label: String) {
-    INJECTION("주사 · EV"), ORAL("경구"), SUBLINGUAL("설하"), PATCH("패치"), ANTIANDROGEN("항안드로겐")
+    INJECTION("주사 · EV"), ORAL("경구"), SUBLINGUAL("설하"), PATCH("패치"), ANTIANDROGEN("항안드로겐"), P4("P4 경구")
 }
 
 private val PARAMETER_NAMES = mapOf(
@@ -79,6 +79,7 @@ private val LIMITS = mapOf(
     Part.ORAL to "음식·복용 시각의 영향을 반영하지 않아요. 0–8시간 자료에서 그 뒤 구간을 이어 그렸어요.",
     Part.SUBLINGUAL to "삼키는 비율(약 40%)은 평균값이에요. 개인차가 커서 범위를 넓게 잡아요.",
     Part.PATCH to "피부 상태·부착 부위 차이와, 붙이고 떼는 시점은 반영하지 않아요. 규격 표기값(µg/일)을 그대로 써요.",
+    Part.P4 to com.hormonelog.core.evidence.ProgesteroneEvidence.LIMITS,
     Part.ANTIANDROGEN to "Total T 범위가 넓게 나와요. 경구·설하만 쓸 때는 낮게 나오는 경향이 있어요. 검사로 확인이 필요해요.",
 )
 
@@ -111,8 +112,8 @@ private fun valueText(p: ModelParameter): String {
 @Composable
 fun EvidenceScreen(s: AppState, fmt: Fmt, onBack: () -> Unit) {
     val c = Hl.colors
-    val bundle = EvidenceBundleV1.bundle
     var part by remember { mutableStateOf(Part.INJECTION) }
+    val bundle = if (part == Part.P4) com.hormonelog.core.evidence.ProgesteroneEvidence.bundle else EvidenceBundleV1.bundle
     val calibration = remember(s.doses, s.labs, s.settings.gonadalStatus) { Analysis.calibrate(s.doses, s.labs, s.settings.gonadalStatus) }
 
     val params: List<ModelParameter> = when (part) {
@@ -121,8 +122,9 @@ fun EvidenceScreen(s: AppState, fmt: Fmt, onBack: () -> Unit) {
         Part.SUBLINGUAL -> bundle.parameters.filter { it.route == Route.SUBLINGUAL && it.name.startsWith("sl") }
         Part.PATCH -> bundle.parameters.filter { it.route == Route.PATCH }
         Part.ANTIANDROGEN -> bundle.parameters.filter { it.route == null }
+        Part.P4 -> bundle.parameters
     }
-    val group = when (part) { Part.INJECTION -> CalibrationGroup.INJECTION; Part.ORAL, Part.SUBLINGUAL -> CalibrationGroup.ORAL; Part.PATCH -> CalibrationGroup.PATCH; Part.ANTIANDROGEN -> null }
+    val group = when (part) { Part.INJECTION -> CalibrationGroup.INJECTION; Part.ORAL, Part.SUBLINGUAL -> CalibrationGroup.ORAL; Part.PATCH -> CalibrationGroup.PATCH; Part.ANTIANDROGEN, Part.P4 -> null }
     val personal = group?.let { calibration.groups[it] }
 
     Column(Modifier.fillMaxWidth()) {

@@ -233,6 +233,11 @@ fun ScheduleEditScreen(s: AppState, fmt: Fmt, actions: ScheduleActions) {
                 }
             }
 
+            if (d.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED) {
+                com.hormonelog.app.feature.common.P4ContextFields(d.p4Context, planned = true) { context ->
+                    actions.draft { it.copy(p4Context = context) }
+                }
+            }
             if (d.isPatch) {
                 Field("교체 주기") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

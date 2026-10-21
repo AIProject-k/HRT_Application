@@ -11,7 +11,7 @@ import com.hormonelog.core.domain.Regimen
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.StockItem
 import com.hormonelog.core.domain.VisitMemo
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -20,7 +20,9 @@ import java.util.UUID
 
 /** The flow chart's own state: which hormone, how far back, where the finger is. */
 object FlowOps {
-    fun series(s: AppState, series: HormoneSeries) = s.copy(flow = s.flow.copy(series = series, scrub = null))
+    fun series(s: AppState, series: HormoneSeries) = s.copy(flow = s.flow.copy(
+        series = series, scrub = null, range = if (series == HormoneSeries.P4) ChartRange.DAY else s.flow.range,
+    ))
     fun range(s: AppState, range: ChartRange) = s.copy(flow = s.flow.copy(range = range, scrub = null))
     fun customFrom(s: AppState, millis: Long) = s.copy(flow = s.flow.copy(range = ChartRange.CUSTOM, customFromMillis = millis, scrub = null))
     fun scrub(s: AppState, fraction: Float?) = s.copy(flow = s.flow.copy(scrub = fraction?.coerceIn(0f, 1f)))
@@ -54,7 +56,8 @@ object TimelineOps {
         is RowTarget.Dose -> {
             val d = s.doses.firstOrNull { it.id == target.id }
             if (d == null) s else {
-                val copy = d.copy(id = UUID.randomUUID(), occurredAt = now, sourceZoneId = zone.id, status = DoseStatus.ADMINISTERED, revision = 1, source = RecordSource.MANUAL)
+                val copy = d.copy(id = UUID.randomUUID(), occurredAt = now, sourceZoneId = zone.id, status = DoseStatus.ADMINISTERED, revision = 1, source = RecordSource.MANUAL,
+                    p4Context = d.p4Context?.forNewAdministration())
                 s.copy(
                     doses = (s.doses + copy).sortedBy { it.occurredAt },
                     stock = RecordsReducer.useStock(s.stock, copy),
@@ -167,7 +170,7 @@ object ScheduleOps {
 
     /** A new plan starts from what the person takes now, or from a plain weekly injection with no amount. */
     fun create(s: AppState, now: Instant, zone: ZoneId): AppState {
-        val last = s.doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen }.maxByOrNull { it.occurredAt }
+        val last = s.doses.filter { it.status.wasTaken && it.drug.isEstrogen }.maxByOrNull { it.occurredAt }
         val base = ScheduleDraft(weekdays = setOf(now.atZone(zone).dayOfWeek))
         val draft = if (last == null) base else base.copy(
             drug = last.drug,
@@ -175,6 +178,7 @@ object ScheduleOps {
             amountText = if (last.route == Route.PATCH) "" else plainNumber(last.amountEntered),
             patchStrength = last.patchMicrogramsPerDay ?: 50.0,
             patchCycle = last.patchCycle ?: PatchCycle.TWICE_WEEKLY,
+            p4Context = (last.p4Context ?: com.hormonelog.core.domain.P4Context()).forNewAdministration(),
         )
         return Nav.push(s, Screen.SCHEDULE_EDIT).copy(scheduleDraft = draft)
     }
@@ -194,6 +198,7 @@ object ScheduleOps {
             amountText = if (r.route == Route.PATCH) "" else plainNumber(r.amountEntered),
             patchStrength = r.patchMicrogramsPerDay ?: 50.0,
             patchCycle = r.patchCycle ?: PatchCycle.TWICE_WEEKLY,
+            p4Context = r.p4Context ?: com.hormonelog.core.domain.P4Context(),
             interval = interval,
             customDays = if (interval == IntervalChoice.CUSTOM) r.everyDays.toString() else "",
             weekdays = r.weekdaySet.ifEmpty { if (interval == IntervalChoice.WEEKLY) setOf(r.startAt.atZone(zone).dayOfWeek) else emptySet() },
@@ -278,6 +283,7 @@ object ScheduleOps {
             weekdays = weekdays,
             timeMinutes = d.timeMinutes,
             patchCycle = (existing?.patchCycle ?: d.patchCycle).takeIf { (existing?.route ?: d.route) == Route.PATCH },
+            p4Context = d.p4Context.takeIf { (existing?.drug ?: d.drug) == Drug.PROGESTERONE_MICRONIZED },
         )
     }
 

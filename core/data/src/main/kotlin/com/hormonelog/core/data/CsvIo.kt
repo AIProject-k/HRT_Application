@@ -45,7 +45,7 @@ data class SkippedRow(val line: Int, val reason: SkipReason)
  */
 object CsvIo {
 
-    private const val HEADER = "type,datetime,drug,route,amount,unit,e2,tt,e2_unit,assay,note,status,tt_unit,site,baseline"
+    private const val HEADER = "type,datetime,drug,route,amount,unit,e2,tt,e2_unit,assay,note,status,tt_unit,site,baseline,p4,p4_unit,p4_product,p4_meal"
     private val DEFAULT_COLUMNS = HEADER.split(',')
 
     /** An amount outside this cannot be a real dose in any unit the app records. */
@@ -111,20 +111,29 @@ object CsvIo {
                             note = restored(col("note")),
                             source = RecordSource.IMPORT,
                             site = parseSite(col("site")),
+                            p4Context = if (drug == Drug.PROGESTERONE_MICRONIZED && (col("p4_product").isNotBlank() || col("p4_meal").isNotBlank())) com.hormonelog.core.domain.P4Context(
+                                com.hormonelog.core.domain.P4Product.entries.firstOrNull { it.name.equals(col("p4_product"), true) } ?: com.hormonelog.core.domain.P4Product.UNKNOWN,
+                                com.hormonelog.core.domain.P4Meal.entries.firstOrNull { it.name.equals(col("p4_meal"), true) } ?: com.hormonelog.core.domain.P4Meal.UNKNOWN,
+                            ) else null,
                         )
                     }
                     "lab" -> {
                         val e2 = col("e2").toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
                         val tt = col("tt").toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+                        val rawP4 = col("p4")
+                        val p4 = rawP4.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
                         val reason = when {
                             at == null -> SkipReason.BAD_DATE
-                            e2 == null && tt == null -> SkipReason.NO_VALUE
+                            rawP4.isNotBlank() && p4 == null -> SkipReason.NO_VALUE
+                            e2 == null && tt == null && p4 == null -> SkipReason.NO_VALUE
                             else -> null
                         }
                         if (reason != null) { skipped += SkippedRow(lineNo, reason); continue }
                         val e2Unit = col("e2_unit").ifBlank { LabAnalyteValue.E2_CANONICAL_UNIT }
                         val ttUnit = col("tt_unit").ifBlank { LabAnalyteValue.TT_CANONICAL_UNIT }
+                        val p4Unit = col("p4_unit").ifBlank { "ng/mL" }
                         val analytes = buildList {
+                            if (p4 != null) add(LabAnalyteValue(Analyte.PROGESTERONE, p4, p4Unit, LabAnalyteValue.canonical(Analyte.PROGESTERONE, p4, p4Unit)))
                             if (e2 != null) add(LabAnalyteValue(Analyte.ESTRADIOL, e2, e2Unit, LabAnalyteValue.canonical(Analyte.ESTRADIOL, e2, e2Unit)))
                             if (tt != null) add(LabAnalyteValue(Analyte.TOTAL_TESTOSTERONE, tt, ttUnit, LabAnalyteValue.canonical(Analyte.TOTAL_TESTOSTERONE, tt, ttUnit)))
                         }
@@ -159,18 +168,21 @@ object CsvIo {
                 sb,
                 "dose", d.occurredAt.atZone(zone).toLocalDateTime().toString(), drugKey(d.drug), routeKey(d.route),
                 trimNum(d.amountEntered), unitKey(d.enteredUnit), "", "", "", "", defused(d.note.orEmpty()),
-                statusKey(d.status), "", d.site?.let(::siteKey).orEmpty(), "",
+                statusKey(d.status), "", d.site?.let(::siteKey).orEmpty(), "", "", "",
+                d.p4Context?.product?.name.orEmpty(), d.p4Context?.meal?.name.orEmpty(),
             )
         }
         for (l in labs.sortedBy { it.collectedAt ?: Instant.MIN }) {
             val e2 = l.analytes.firstOrNull { it.analyte == Analyte.ESTRADIOL }
             val tt = l.analytes.firstOrNull { it.analyte == Analyte.TOTAL_TESTOSTERONE }
+            val p4 = l.analytes.firstOrNull { it.analyte == Analyte.PROGESTERONE }
             row(
                 sb,
                 "lab", l.collectedAt?.atZone(zone)?.toLocalDateTime()?.toString().orEmpty(), "", "", "", "",
                 e2?.reportedValue?.let(::trimNum).orEmpty(), tt?.reportedValue?.let(::trimNum).orEmpty(),
                 e2?.reportedUnit.orEmpty(), assayKey(l.assay), defused(l.note.orEmpty()),
                 "", tt?.reportedUnit.orEmpty(), "", if (l.isBaseline) "1" else "",
+                p4?.reportedValue?.let(::trimNum).orEmpty(), p4?.reportedUnit.orEmpty(), "", "",
             )
         }
         return sb.toString()
@@ -257,6 +269,7 @@ object CsvIo {
         "estradiol_patch", "e2_patch", "에스트라디올_패치" -> Drug.ESTRADIOL_PATCH
         "estradiol_gel", "e2_gel", "에스트라디올_젤" -> Drug.ESTRADIOL_GEL
         "spironolactone", "spiro", "스피로노락톤", "스피로놀락톤" -> Drug.SPIRONOLACTONE
+        "progesterone_micronized", "micronized_progesterone", "p4", "미분화_프로게스테론" -> Drug.PROGESTERONE_MICRONIZED
         "cyproterone", "cpa", "androcur", "안드로쿨", "사이프로테론" -> Drug.CYPROTERONE
         else -> null
     }
@@ -301,6 +314,7 @@ object CsvIo {
         Drug.ESTRADIOL_GEL -> "estradiol_gel"
         Drug.SPIRONOLACTONE -> "spironolactone"
         Drug.CYPROTERONE -> "cyproterone"
+        Drug.PROGESTERONE_MICRONIZED -> "progesterone_micronized"
     }
 
     private fun routeKey(r: Route) = when (r) {
