@@ -73,6 +73,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var state by mutableStateOf(AppState())
         private set
 
+    val chat = com.hormonelog.app.chat.ChatSession({ state }, { next, done ->
+        state = next
+        persistRecords(next, done)
+        Reminders.update(app, next)
+    }, { id, input, done -> com.hormonelog.app.platform.TermuxChat.request(app, id, input, state.settings.chatModel, done) },
+        com.hormonelog.app.platform.TermuxChat::cancel,
+        onModelChanged = { model -> act { it.copy(settings = it.settings.copy(chatModel = model)) } },
+        conversationStore = com.hormonelog.app.chat.ChatConversationStore(File(files, "chat-conversation.json")))
+    val chatSetup = com.hormonelog.app.chat.ChatSetupController(app, viewModelScope, chat)
+
     init {
         val storedSettings = settingsStore.load()
         var s = AppState(settings = storedSettings ?: AppSettings())
@@ -108,6 +118,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        chat.suspendRequest()
         if (ViewModelHolder.current === this) ViewModelHolder.current = null
         super.onCleared()
     }
@@ -115,6 +126,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun AppState.withRecords(snap: RecordSnapshot) = copy(
         doses = snap.doses, labs = snap.labs, regimens = snap.regimens, clinics = snap.clinics, memos = snap.memos,
         journal = snap.journal, stock = snap.stock, nextVisitMillis = snap.nextVisitMillis, carried = snap.carried,
+        chatMemories = snap.chatMemories,
     )
 
     // ── plumbing ──────────────────────────────────────────────
@@ -123,7 +135,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         state = next
         val recordsChanged = prev.doses !== next.doses || prev.labs !== next.labs || prev.regimens !== next.regimens ||
             prev.clinics !== next.clinics || prev.memos !== next.memos || prev.journal !== next.journal ||
-            prev.stock !== next.stock || prev.nextVisitMillis != next.nextVisitMillis || prev.carried != next.carried
+            prev.stock !== next.stock || prev.nextVisitMillis != next.nextVisitMillis || prev.carried != next.carried || prev.chatMemories !== next.chatMemories
         if (recordsChanged) persistRecords(next)
         if (prev.settings != next.settings) {
             persistSettings(next.settings)
@@ -135,16 +147,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Apply a pure transition. */
     fun act(block: (AppState) -> AppState) = commit(block(state))
 
-    private fun persistRecords(s: AppState) {
+    private fun persistRecords(s: AppState, onSaved: ((Boolean) -> Unit)? = null) {
         val snapshot = s.snapshot
         viewModelScope.launch(io) {
             try {
                 Storage.locked { recordStore.save(snapshot) }
+                if (onSaved != null) withContext(Dispatchers.Main) { onSaved(true) }
             } catch (e: IOException) {
                 withContext(Dispatchers.Main) {
                     state = state.copy(
                         storageWarning = "마지막 기록을 저장하지 못했어요 (${e.message ?: "저장 공간 부족일 수 있어요"}). 공간을 비운 뒤 다시 시도해 주세요. 입력한 내용은 앱을 닫기 전까지 남아 있어요.",
                     )
+                    onSaved?.invoke(false)
                 }
             }
         }
@@ -199,6 +213,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             is Confirm.Backfill -> act { RecordsReducer.confirmBackfill(it) }
             is Confirm.ReplaceRegimen -> act { RecordsReducer.confirmReplace(it) }
             Confirm.ClearAll -> {
+                chat.eraseHistory()
                 act { RecordsReducer.clearAll(it) }
                 // "All records" means the copies too: reports, restore safety copies, files set aside as unreadable.
                 purgeCopies()
@@ -254,7 +269,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 result.onSuccess {
                     act {
                         it.copy(
-                            backup = BackupUi.Done(backupFileName(), (bytes.size / 1024).coerceAtLeast(1), s.doses.size, s.labs.size, s.regimens.size, s.memos.size + s.clinics.size),
+                            backup = BackupUi.Done(backupFileName(), (bytes.size / 1024).coerceAtLeast(1), s.doses.size, s.labs.size, s.regimens.size, s.memos.size + s.clinics.size, s.chatMemories.size),
                             settings = it.settings.copy(lastBackupAtMillis = System.currentTimeMillis(), backupBannerHiddenUntilMillis = null),
                         )
                     }

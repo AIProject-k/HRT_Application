@@ -1,6 +1,7 @@
 package com.hormonelog.core.data
 
 import com.hormonelog.core.domain.AppSettings
+import com.hormonelog.core.domain.ChatModel
 import com.hormonelog.core.domain.E2Unit
 import com.hormonelog.core.domain.FontScale
 import com.hormonelog.core.domain.GonadalStatus
@@ -62,6 +63,7 @@ class SettingsStore(private val file: File) {
             put("hideOnLockScreen", s.hideOnLockScreen)
             putOpt("lastBackupAtMillis", s.lastBackupAtMillis)
             putOpt("backupBannerHiddenUntilMillis", s.backupBannerHiddenUntilMillis)
+            put("chatModel", s.chatModel.name)
         }
 
         fun fromJson(o: JSONObject): AppSettings {
@@ -84,6 +86,7 @@ class SettingsStore(private val file: File) {
                 hideOnLockScreen = o.optBoolean("hideOnLockScreen", d.hideOnLockScreen),
                 lastBackupAtMillis = o.longOrNull("lastBackupAtMillis"),
                 backupBannerHiddenUntilMillis = o.longOrNull("backupBannerHiddenUntilMillis"),
+                chatModel = o.enumOr("chatModel", ChatModel.HAIKU),
             )
         }
 

@@ -125,6 +125,7 @@ fun SecurityScreen(s: AppState, fmt: Fmt, actions: SecurityActions) {
                     ) {
                         HlText("백업을 만들었어요", size = HlSize.t14, weight = FontWeight.Bold, color = c.teal)
                         HlText("${b.fileName} · ${b.sizeKb} KB\n투약 ${b.doses}건 · 검사 ${b.labs}건 · 일정 ${b.regimens}개 · 메모 ${b.memos}건", size = HlSize.t13, lineHeight = 1.5f)
+                        if (b.chatMemories > 0) HlText("기억한 단축어 ${b.chatMemories}개 포함", size = HlSize.t13)
                         HlTextAction("다른 위치에 저장", { actions.resetBackup(); actions.createBackup() })
                     }
                     is BackupUi.Failed -> Column(
@@ -144,7 +145,7 @@ fun SecurityScreen(s: AppState, fmt: Fmt, actions: SecurityActions) {
                 HlDivider()
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     HlText("CSV 내보내기 · 불러오기", size = HlSize.t14, weight = FontWeight.SemiBold)
-                    HlText("CSV는 일부 정보만 담겨요. 일정·병원 메모·보정 상태는 빠져요.", size = HlSize.t12, color = c.muted, lineHeight = 1.5f)
+                    HlText("CSV는 일부 정보만 담겨요. 일정·병원 메모·보정 상태·기억한 단축어는 빠져요.", size = HlSize.t12, color = c.muted, lineHeight = 1.5f)
                     Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                         HlTextAction("내보내기", {
                             csvOut.launch("hormonelog_${fmt.now.epochSecond}.csv")
@@ -155,6 +156,7 @@ fun SecurityScreen(s: AppState, fmt: Fmt, actions: SecurityActions) {
             }
 
             HlSectionLabel("보안")
+            HlText("원본 기록과 기억한 용량은 기기에 저장해요. 채팅 입력과 기억 이름·종류는 Claude 서버로 전송돼요. 기억한 단축어는 전체 백업에 포함돼요.", size = HlSize.t12, color = c.muted, lineHeight = 1.5f)
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card)) {
                 Column(Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     HlText("위장 모드", size = HlSize.t14, weight = FontWeight.Bold)

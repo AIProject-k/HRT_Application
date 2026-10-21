@@ -1,0 +1,16 @@
+#!/bin/bash
+set -eu
+export DISABLE_AUTOUPDATER=1
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN
+model="${1:-claude-haiku-5-5}"
+case "$model" in
+  claude-opus-5-5|claude-sonnet-5-5|claude-haiku-5-5) ;;
+  *) exit 64 ;;
+esac
+[ "$#" -le 1 ] || exit 64
+cd /home/hrt/work
+exec /usr/bin/timeout --signal=TERM --kill-after=5s 85s /home/hrt/.local/bin/claude \
+  --model "$model" -p --output-format json --json-schema "$(cat /home/hrt/chat/schema.json)" \
+  --system-prompt-file /home/hrt/chat/prompt.txt \
+  --tools '' --disallowedTools 'mcp__*' --allowedTools StructuredOutput --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+  --setting-sources '' --no-session-persistence --max-turns 2

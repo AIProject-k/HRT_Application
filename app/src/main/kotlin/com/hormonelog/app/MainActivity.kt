@@ -25,6 +25,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.onResume()
+        vm.chatSetup.resume()
+    }
+    override fun onPause() {
+        vm.chat.flush()
+        vm.chatSetup.pause()
+        super.onPause()
     }
 
     /**

@@ -148,6 +148,10 @@ fun AppRoot(vm: AppViewModel, onSettingsChanged: (AppSettings) -> Unit) {
         BackHandler(enabled = Nav.canGoBack(s)) { vm.act { Nav.back(it) } }
 
         Box(Modifier.fillMaxSize().background(c.bg)) {
+            if (vm.chatSetup.ui.visible) {
+                com.hormonelog.app.feature.chat.ChatSetupScreen(vm.chatSetup)
+                return@Box
+            }
             Column(Modifier.fillMaxSize().statusBarsPadding()) {
                 s.storageWarning?.let { StorageWarningBanner(it) { vm.act { st -> st.copy(storageWarning = null) } } }
                 Box(Modifier.weight(1f).fillMaxWidth().then(if (s.screen.isTab) Modifier else Modifier.navigationBarsPadding().imePadding())) {
@@ -191,8 +195,11 @@ private fun ScreenHost(vm: AppViewModel, s: AppState, fmt: Fmt) {
                 onLab = { vm.act { RecordsReducer.openLab(it) } },
                 onBackup = { vm.act { Nav.push(it, Screen.SECURITY) } },
                 onHideBanner = { vm.hideBackupBanner(fmt.now.toEpochMilli() + 7L * 86_400_000L) },
+                onChat = { vm.act { Nav.push(it, Screen.CHAT) } },
             ),
         )
+
+        Screen.CHAT -> com.hormonelog.app.feature.chat.ChatScreen(vm.chat, { vm.act { Nav.back(it) } }, vm.chatSetup)
 
         Screen.TIMELINE -> TimelineScreen(
             s, fmt,
@@ -361,6 +368,7 @@ private fun ScreenHost(vm: AppViewModel, s: AppState, fmt: Fmt) {
                     next = vm::onboardingNext,
                     edit = { block -> vm.act { OnboardingOps.edit(it, block) } },
                     route = { r -> vm.act { OnboardingOps.setRoute(it, r) } },
+                    chat = { vm.act { Nav.push(it, Screen.CHAT) } },
                 ),
             )
         }

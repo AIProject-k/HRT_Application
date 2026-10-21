@@ -1,0 +1,10 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -eu
+container=ubuntu
+if [ -f "$HOME/.local/share/hormonelog-chat/container" ]; then
+  container="$(cat "$HOME/.local/share/hormonelog-chat/container")"
+fi
+case "$container" in ubuntu|hormonelog-ubuntu24) ;; *) exit 64 ;; esac
+exec proot-distro login --isolated --user hrt --work-dir /home/hrt/work "$container" -- \
+  /usr/bin/env PATH=/home/hrt/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  /home/hrt/.local/bin/hrt-chat-guest "$@"

@@ -2,7 +2,7 @@
 
 *[한국어](README.md) · English*
 
-> An offline Android app for logging hormone replacement therapy (HRT) · local-only · no server · no account
+> An Android HRT log with local records and optional Claude Code subscription chat
 
 ## What it is
 
@@ -15,14 +15,14 @@ pharmacokinetic models in the published literature; log a real lab value and it
 **calibrates that curve to your own body**. The more lab values you add, the more
 personalised the curve becomes.
 
-- **Everything stays on the device** — no uploads, no account, no network calls
+- **Original records stay on the device** — regular logging works offline without an account. Optional chat sends the conversation through local Termux/Claude Code to Claude's servers and uses the signed-in subscription
 - **Only draws what it can source** — a route gets a curve only when every parameter has provenance; the rest (gel) is left off the curve, and the app says why
 - **Never blends estimates with measurements** — an estimate is a teal band, a measurement a yellow diamond, always
 
 **⚠️ Reference tool only.** The projected curves are *population approximations* derived
 from public literature, not clinically validated values. The app does not suggest
-diagnoses, prescriptions, or dose changes, and every piece of data stays on the
-device (no network calls).
+diagnoses, prescriptions, or dose changes. Original records stay on the device;
+messages entered into optional chat are sent to Claude's servers.
 
 ## Screens
 
@@ -36,7 +36,11 @@ device (no network calls).
 
 ## Features
 
+- **Optional chat installer** — install or skip at first launch. After Android's install/permission approvals and one initial Termux preparation command, the app installs Ubuntu 24.04 and Claude Code 2.1.292, opens the official subscription login, and verifies the connection. Matching login codes can be forwarded on return; manual entry is also available. Claude chat stays disabled until checks succeed. Standard records and local query shortcuts remain available. [Process and verification limits](docs/ChatInstaller_2026-10-19.md)
+- **Reusable setup records** — fixed versions, hashes, installation order and troubleshooting are preserved in the [runbook](tools/phone_chat/README.md). The device saves sanitized stage/time/error events and a shared runtime descriptor. Other apps on the same phone can reuse the environment and subscription login with separate prompts, schemas and data; their actual adapters still need implementation. [Integration contract](docs/ClaudeSamePhoneIntegration.md)
+- **Subscription chat (experimental)** — choose Opus, Sonnet or Haiku 5.5 in the chat screen. Haiku is the default; the selection survives restarts and full backups. Explicitly taught drug aliases and dose shortcuts are stored locally and can be listed, edited or forgotten through chat. Saved doses are resolved locally; only memory names and types are included in subsequent model requests. Teaching messages themselves are sent to Claude. Requires the configured Termux environment. [Setup and limits](docs/S23ClaudeSetup_2026-10-19.md) · [Memory and model verification](docs/ChatMemory_2026-10-19.md)
 - **First run** — six steps (current medication and schedule, back-filling past doses, testes, lab units, pre-HRT labs). Every step but the first can be skipped
+- **Current status in chat** — **현재 상태 / 최근 검사 / 다음 주사** are preloaded shortcuts. Tap a button or type its exact name (spaces optional) to query without Claude. Natural-language questions also work through the selected model. Estimates stay separate from measurements; lab units and collection times are preserved. Query results are excluded from subsequent model requests. [Verification](docs/ChatCurrentStatus_2026-10-19.md)
 - **Dose logging** — drug, route (IM / SC injection, oral, sublingual, patch, gel), amount, time, injection site, status (taken / late / missed). A patch is logged by strength (µg/day) and change cycle
 - **Repeating schedules** — weekdays, time of day, end date. A second schedule for the same drug and route asks first, then ends the old one and starts the new one. The past doses a schedule would have produced are counted and shown before anything is recorded
 - **Lab results** — measured E2 / Total T, unit conversion (pg/mL·pmol/L, ng/dL·ng/mL·nmol/L), assay method, draw time (unknown allowed). A value far from the expectation is flagged as a possible unit mix-up before saving. The result screen shows the difference from the estimate, where the draw falls in the dosing cycle, and whether (and if not, why not) it calibrated the curve

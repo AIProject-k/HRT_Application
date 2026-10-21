@@ -14,6 +14,13 @@ val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
+val preparePhoneChatAssets = tasks.register<Sync>("preparePhoneChatAssets") {
+    from(rootProject.file("tools/phone_chat")) {
+        include("setup.sh", "setup.py", "hrt-login.py", "hrt-chat", "hrt-chat-guest", "schema.json", "prompt.txt")
+    }
+    into(layout.buildDirectory.dir("generated/phoneChatAssets/chat"))
+}
+
 android {
     namespace = "com.hormonelog.app"
     compileSdk = 36
@@ -53,12 +60,14 @@ android {
     buildFeatures {
         compose = true
     }
+    sourceSets.getByName("main").assets.directories.add(layout.buildDirectory.dir("generated/phoneChatAssets").get().asFile.absolutePath)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+tasks.named("preBuild").configure { dependsOn(preparePhoneChatAssets) }
 
 kotlin {
     jvmToolchain(17)
@@ -81,6 +90,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

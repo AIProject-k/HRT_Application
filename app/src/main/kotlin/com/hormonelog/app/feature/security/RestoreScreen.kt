@@ -83,6 +83,10 @@ private fun Preview(p: RestorePreview, s: AppState, fmt: Fmt, actions: RestoreAc
         if (backup) {
             HlDivider()
             CountRow("반복 일정", "${snap.regimens.size}개")
+            if (snap.chatMemories.isNotEmpty()) {
+                HlDivider()
+                CountRow("기억한 단축어", "${snap.chatMemories.size}개")
+            }
             HlDivider()
             CountRow("병원 메모", "${snap.memos.size + snap.clinics.size}건")
             if (snap.journal.isNotEmpty()) {

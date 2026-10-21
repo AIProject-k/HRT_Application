@@ -3,6 +3,11 @@
     <!-- Dose, lab and visit reminders; the system asks when the user turns the first one on. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Optional, user-started download and Android-approved installation of official Termux. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <queries><package android:name="com.termux" /></queries>
 
     <!--
         allowBackup=false is what makes the app's "기기 안에만 저장" claim true: Android backs apps
@@ -17,6 +22,8 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.HormoneLog">
+
+        <receiver android:name=".platform.ChatResultReceiver" android:exported="false" />
 
         <!-- The screen itself is not a launcher entry; the two aliases below are, one at a time. -->
         <activity
