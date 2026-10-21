@@ -2,6 +2,12 @@ package com.hormonelog.core.domain
 
 enum class ThemeMode { SYSTEM, DARK, LIGHT }
 
+enum class ChatModel(val label: String, val modelId: String) {
+    OPUS("Opus", "claude-opus-5-5"),
+    SONNET("Sonnet", "claude-sonnet-5-5"),
+    HAIKU("Haiku", "claude-haiku-5-5"),
+}
+
 /** Extra scale applied on top of the system font size. */
 enum class FontScale(val multiplier: Float) {
     DEFAULT(1f),
@@ -18,6 +24,10 @@ enum class TUnit(val label: String) {
     NG_DL("ng/dL"),
     NG_ML("ng/mL"),
     NMOL_L("nmol/L"),
+}
+
+enum class P4Unit(val label: String) {
+    NG_ML("ng/mL"), NMOL_L("nmol/L"),
 }
 
 /**
@@ -49,6 +59,7 @@ data class AppSettings(
     val lastBackupAtMillis: Long? = null,
     /** The backup nudge stays hidden until then. */
     val backupBannerHiddenUntilMillis: Long? = null,
+    val chatModel: ChatModel = ChatModel.HAIKU,
 ) {
     val notificationsOn: Int get() = listOf(notifyInjection, notifyDaily, notifyLab, notifyAppointment).count { it }
 }

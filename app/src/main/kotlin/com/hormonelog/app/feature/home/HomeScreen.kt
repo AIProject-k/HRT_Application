@@ -61,7 +61,7 @@ import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
 import com.hormonelog.app.ui.theme.HeroTracking
 import com.hormonelog.core.domain.Drug
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.EstimatePoint
 import java.time.temporal.ChronoUnit
 
@@ -75,6 +75,7 @@ class HomeActions(
     val onLab: () -> Unit,
     val onBackup: () -> Unit,
     val onHideBanner: () -> Unit,
+    val onChat: () -> Unit = {},
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -96,7 +97,7 @@ fun HomeScreen(s: AppState, fmt: Fmt, actions: HomeActions, modifier: Modifier =
     val cycle = remember(s.doses, s.regimens, calibration, bucket) { Analysis.cycle(s.doses, s.regimens, calibration, now, zone) }
     val next = remember(s.regimens, s.doses, bucket) { HomeLogic.nextDose(s.regimens, s.doses, now, zone) }
     val lastLab = remember(s.labs) { HomeLogic.lastLab(s.labs) }
-    val lastCombo = remember(s.doses) { s.doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen }.maxByOrNull { it.occurredAt } }
+    val lastCombo = remember(s.doses) { s.doses.filter { it.status.wasTaken && it.drug.isEstrogen }.maxByOrNull { it.occurredAt } }
     val nudge = HomeLogic.backupNudgeDays(s.settings, s.hasRecords, now)
 
     ScreenScroll(modifier) {
@@ -116,10 +117,12 @@ fun HomeScreen(s: AppState, fmt: Fmt, actions: HomeActions, modifier: Modifier =
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     HlIcon(HlIcon.Phone, size = 14.dp, tint = c.muted, strokeWidth = 2f)
-                    HlText("기기 안에만", size = HlSize.t12, weight = FontWeight.SemiBold, color = c.muted)
+                    HlText("기기에 기록", size = HlSize.t12, weight = FontWeight.SemiBold, color = c.muted)
                 }
             },
         )
+
+        HlButton("채팅으로 기록", actions.onChat, kind = HlButtonKind.Secondary)
 
         if (!s.hasRecords) {
             EmptyHome(actions)
@@ -182,6 +185,14 @@ fun HomeScreen(s: AppState, fmt: Fmt, actions: HomeActions, modifier: Modifier =
             }
 
             if (!curves.ttHidden && tt != null) TotalTCard(tt)
+            if (s.doses.any { it.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED && it.status.wasTaken && !it.occurredAt.isAfter(now) }) {
+                val p4 = Analysis.p4At(s.doses, now)
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HlText("지금 P4 복용분 예상", size = HlSize.t14, weight = FontWeight.SemiBold, color = c.orange)
+                    HlText(p4?.let { "${"%.2f".format(it.median)} ng/mL" } ?: "예상값 없음 · 지원 밖 복용 기록 확인", size = HlSize.t22, weight = FontWeight.Bold)
+                    HlText("일반 허가자료 참고 · 제품·식사 조건 미반영 · 체내 총농도 아님", size = HlSize.t12, color = c.muted)
+                }
+            }
 
             // ── three tiles ──
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

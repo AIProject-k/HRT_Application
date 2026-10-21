@@ -26,7 +26,7 @@ import java.util.UUID
 enum class Screen {
     HOME, TIMELINE, FLOW, ME,
     MODEL, EVIDENCE, SECURITY, RESTORE, SCHEDULES, SCHEDULE_EDIT, NOTIFICATIONS, MEMOS, RECORDS, REPORT, LICENSES,
-    LAB_RESULT, ONBOARDING;
+    LAB_RESULT, ONBOARDING, CHAT;
 
     val isTab: Boolean get() = this == HOME || this == TIMELINE || this == FLOW || this == ME
 }
@@ -69,6 +69,7 @@ data class UndoSnapshot(
     val nextVisitMillis: Long?,
     /** Records set aside as unreadable travel with the lists, so "delete all" can take them and still be undone. */
     val carried: Map<String, List<String>> = emptyMap(),
+    val chatMemories: List<com.hormonelog.core.domain.ChatMemory> = emptyList(),
 )
 
 /** Past doses a plan would have produced, held back until the user has seen how many. */
@@ -106,6 +107,7 @@ data class LabResultSummary(
     val beforeFirstDose: Boolean,
     /** 1-based place of this lab among the labs that shaped the same curve, by time; null if it did not. */
     val calibrationOrdinal: Int? = null,
+    val p4: P4Outcome? = null,
 )
 
 data class E2Outcome(
@@ -118,6 +120,8 @@ data class E2Outcome(
     val spot: CycleSpot?,
     val calibration: AnalyteCalibration?,
 )
+
+data class P4Outcome(val reported: Double, val unit: String, val expectedNgMl: Double?)
 
 data class TtOutcome(
     val reported: Double,
@@ -161,7 +165,7 @@ sealed interface BackupUi {
 
     /** Built and waiting for the user to pick where it goes. */
     data class ReadyToSave(val fileName: String) : BackupUi
-    data class Done(val fileName: String, val sizeKb: Int, val doses: Int, val labs: Int, val regimens: Int, val memos: Int) : BackupUi
+    data class Done(val fileName: String, val sizeKb: Int, val doses: Int, val labs: Int, val regimens: Int, val memos: Int, val chatMemories: Int = 0) : BackupUi
     data class Failed(val reason: String) : BackupUi
 }
 
@@ -184,9 +188,9 @@ sealed interface RestoreIssue {
     data object Unreadable : RestoreIssue
 }
 
-enum class ChartRange(val days: Int?) { WEEK(7), MONTH(30), QUARTER(90), HALF(180), YEAR(365), ALL(null), CUSTOM(null) }
+enum class ChartRange(val days: Int?) { DAY(1), WEEK(7), MONTH(30), QUARTER(90), HALF(180), YEAR(365), ALL(null), CUSTOM(null) }
 
-enum class HormoneSeries { E2, TT }
+enum class HormoneSeries { E2, TT, P4 }
 
 data class FlowUi(
     val series: HormoneSeries = HormoneSeries.E2,
@@ -241,6 +245,7 @@ data class AppState(
     val nextVisitMillis: Long? = null,
     /** Records a newer build wrote that this one cannot read; kept untouched and written back. */
     val carried: Map<String, List<String>> = emptyMap(),
+    val chatMemories: List<com.hormonelog.core.domain.ChatMemory> = emptyList(),
     val settings: AppSettings = AppSettings(),
     // ── navigation ──
     val screen: Screen = Screen.HOME,
@@ -271,11 +276,11 @@ data class AppState(
     val report: ReportUi = ReportUi(),
 ) {
     val snapshot: RecordSnapshot
-        get() = RecordSnapshot(doses, labs, regimens, clinics, memos, journal, stock, nextVisitMillis, carried)
+        get() = RecordSnapshot(doses, labs, regimens, clinics, memos, journal, stock, nextVisitMillis, carried, chatMemories)
 
     /** True once there is anything at all to draw a curve from or to show. */
     val hasRecords: Boolean get() = doses.isNotEmpty() || labs.isNotEmpty() || regimens.isNotEmpty()
 
     /** Everything the user has entered, for the delete-all count and the restore warning. */
-    val recordCount: Int get() = doses.size + labs.size + regimens.size + memos.size + journal.size + clinics.size
+    val recordCount: Int get() = doses.size + labs.size + regimens.size + memos.size + journal.size + clinics.size + chatMemories.size
 }

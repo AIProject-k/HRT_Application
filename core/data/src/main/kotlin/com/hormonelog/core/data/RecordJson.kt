@@ -43,6 +43,7 @@ data class RecordSnapshot(
      * untouched on every save, so downgrading and upgrading again never loses them.
      */
     val carried: Map<String, List<String>> = emptyMap(),
+    val chatMemories: List<com.hormonelog.core.domain.ChatMemory> = emptyList(),
 ) {
     val carriedCount: Int get() = carried.values.sumOf { it.size }
 }
@@ -54,7 +55,7 @@ data class RecordSnapshot(
  * newer build, say) sets only that record aside instead of discarding the whole file.
  */
 internal object RecordJson {
-    const val VERSION = 3
+    const val VERSION = 4
 
     fun toJson(s: RecordSnapshot): JSONObject = JSONObject().apply {
         put("version", VERSION)
@@ -65,6 +66,7 @@ internal object RecordJson {
         put("memos", jsonArray(s.memos.map(::memoTo), s.carried["memos"]))
         put("journal", jsonArray(s.journal.map(::journalTo), s.carried["journal"]))
         put("stock", jsonArray(s.stock.map(::stockTo), s.carried["stock"]))
+        put("chatMemories", jsonArray(s.chatMemories.map(ChatMemoryJson::toJson), s.carried["chatMemories"]))
         putOpt("nextVisitMillis", s.nextVisitMillis)
     }
 
@@ -99,6 +101,7 @@ internal object RecordJson {
             memos = read("memos", ::memoFrom),
             journal = read("journal", ::journalFrom),
             stock = read("stock", ::stockFrom),
+            chatMemories = read("chatMemories", ChatMemoryJson::fromJson),
             // A visit date no calendar could show is dropped, not allowed to break the home screen.
             nextVisitMillis = if (root.isNull("nextVisitMillis")) null else root.optLong("nextVisitMillis").takeIf { RecordLimits.isPlausible(Instant.ofEpochMilli(it)) },
             carried = carried,
@@ -121,6 +124,8 @@ internal object RecordJson {
         put("source", d.source.name)
         putOpt("site", d.site?.name)
         putOpt("patchCycle", d.patchCycle?.name)
+        putOpt("p4Product", d.p4Context?.product?.name)
+        putOpt("p4Meal", d.p4Context?.meal?.name)
     }
 
     private fun doseFrom(o: JSONObject) = DoseEvent(
@@ -138,6 +143,7 @@ internal object RecordJson {
         source = o.optEnum("source", RecordSource.MANUAL),
         site = o.optEnumOrNull<InjectionSite>("site"),
         patchCycle = o.optEnumOrNull<PatchCycle>("patchCycle"),
+        p4Context = p4ContextFrom(o),
     )
 
     private fun labTo(l: LabResult) = JSONObject().apply {
@@ -199,6 +205,8 @@ internal object RecordJson {
         if (r.weekdays != 0) put("weekdays", r.weekdays)
         putOpt("timeMinutes", r.timeMinutes)
         putOpt("patchCycle", r.patchCycle?.name)
+        putOpt("p4Product", r.p4Context?.product?.name)
+        putOpt("p4Meal", r.p4Context?.meal?.name)
     }
 
     private fun regimenFrom(o: JSONObject) = Regimen(
@@ -214,7 +222,16 @@ internal object RecordJson {
         weekdays = o.optInt("weekdays", 0),
         timeMinutes = if (o.isNull("timeMinutes")) null else o.getInt("timeMinutes"),
         patchCycle = o.optEnumOrNull<PatchCycle>("patchCycle"),
+        p4Context = p4ContextFrom(o),
     )
+
+    private fun p4ContextFrom(o: JSONObject): com.hormonelog.core.domain.P4Context? {
+        if (o.optString("drug") != Drug.PROGESTERONE_MICRONIZED.name || (o.isNull("p4Product") && o.isNull("p4Meal"))) return null
+        return com.hormonelog.core.domain.P4Context(
+            o.optEnum("p4Product", com.hormonelog.core.domain.P4Product.UNKNOWN),
+            o.optEnum("p4Meal", com.hormonelog.core.domain.P4Meal.UNKNOWN),
+        )
+    }
 
     private fun clinicTo(c: Clinic) = JSONObject().apply {
         put("id", c.id.toString())

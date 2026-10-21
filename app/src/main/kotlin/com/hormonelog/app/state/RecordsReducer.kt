@@ -15,7 +15,7 @@ import com.hormonelog.core.domain.Regimen
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.StockItem
 import com.hormonelog.core.domain.allowedRoutes
-import com.hormonelog.core.domain.isAntiandrogen
+import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.CalibrationResult
 import java.time.Instant
 import java.time.ZoneId
@@ -27,7 +27,7 @@ import kotlin.math.roundToInt
 fun drugsFor(route: Route): List<Drug> {
     val order = listOf(
         Drug.ESTRADIOL_VALERATE, Drug.ESTRADIOL_CYPIONATE, Drug.ESTRADIOL_TABLET, Drug.CYPROTERONE,
-        Drug.SPIRONOLACTONE, Drug.ESTRADIOL_PATCH, Drug.ESTRADIOL_GEL,
+        Drug.SPIRONOLACTONE, Drug.ESTRADIOL_PATCH, Drug.ESTRADIOL_GEL, Drug.PROGESTERONE_MICRONIZED,
     )
     return order.filter { route in it.allowedRoutes }
 }
@@ -51,7 +51,7 @@ object RecordsReducer {
     fun dismissToast(s: AppState): AppState = s.copy(toast = null, undo = null)
 
     /** The records as they stand now, to be restored by [undo]. */
-    fun undoPoint(s: AppState) = UndoSnapshot(s.doses, s.labs, s.regimens, s.clinics, s.memos, s.journal, s.stock, s.nextVisitMillis, s.carried)
+    fun undoPoint(s: AppState) = UndoSnapshot(s.doses, s.labs, s.regimens, s.clinics, s.memos, s.journal, s.stock, s.nextVisitMillis, s.carried, s.chatMemories)
 
     private fun snapshot(s: AppState) = undoPoint(s)
 
@@ -61,6 +61,7 @@ object RecordsReducer {
         return s.copy(
             doses = u.doses, labs = u.labs, regimens = u.regimens, clinics = u.clinics, memos = u.memos,
             journal = u.journal, stock = u.stock, nextVisitMillis = u.nextVisitMillis, carried = u.carried,
+            chatMemories = u.chatMemories,
             undo = null, toast = "되돌렸어요",
         )
     }
@@ -83,6 +84,7 @@ object RecordsReducer {
     fun clearAll(s: AppState): AppState = s.copy(
         doses = emptyList(), labs = emptyList(), regimens = emptyList(), clinics = emptyList(), memos = emptyList(),
         journal = emptyList(), stock = emptyList(), nextVisitMillis = null, carried = emptyMap(), confirm = null,
+        chatMemories = emptyList(),
         toast = "모든 기록을 삭제했어요", undo = snapshot(s),
     )
 
@@ -96,7 +98,7 @@ object RecordsReducer {
      * user never typed must not look like a suggestion.
      */
     fun openDose(s: AppState, repeat: Boolean = false): AppState {
-        val last = s.doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen }.maxByOrNull { it.occurredAt }
+        val last = s.doses.filter { it.status.wasTaken && (it.drug.isEstrogen || it.drug == Drug.PROGESTERONE_MICRONIZED) }.maxByOrNull { it.occurredAt }
         val base = DoseDraft(repeat = repeat)
         val draft = if (last != null) fillFrom(base.copy(drug = last.drug, route = last.route), s.doses) else base
         return s.copy(doseDraft = draft, sheet = Sheet.Dose)
@@ -112,6 +114,7 @@ object RecordsReducer {
             amountText = if (e.route == Route.PATCH) "" else plainNumber(e.amountEntered),
             patchStrength = e.patchMicrogramsPerDay ?: 50.0,
             patchCycle = e.patchCycle ?: com.hormonelog.core.domain.PatchCycle.TWICE_WEEKLY,
+            p4Context = e.p4Context ?: com.hormonelog.core.domain.P4Context(),
             time = DoseTime.PICK,
             pickedMillis = e.occurredAt.toEpochMilli(),
             site = e.site,
@@ -140,6 +143,7 @@ object RecordsReducer {
             amountFilled = d.route != Route.PATCH,
             patchStrength = last.patchMicrogramsPerDay ?: d.patchStrength,
             patchCycle = last.patchCycle ?: d.patchCycle,
+            p4Context = (last.p4Context ?: com.hormonelog.core.domain.P4Context()).forNewAdministration(),
         )
     }
 
@@ -165,6 +169,7 @@ object RecordsReducer {
             amountFilled = false,
             patchStrength = if (combo.route == Route.PATCH) combo.amount else s.doseDraft.patchStrength,
             patchCycle = combo.patchCycle ?: s.doseDraft.patchCycle,
+            p4Context = (combo.p4Context ?: com.hormonelog.core.domain.P4Context()).forNewAdministration(),
             repeat = false,
         ),
     )
@@ -178,7 +183,7 @@ object RecordsReducer {
      */
     fun saveDose(s: AppState, now: Instant, zone: ZoneId, force: Boolean = false): AppState {
         val d = s.doseDraft
-        if (d.repeat || !d.canSave) return s
+        if (d.repeat || !d.canSave || d.route !in d.drug.allowedRoutes) return s
         val at = resolveDoseTime(d, now)
         if (at.isAfter(now.plusSeconds(FUTURE_TOLERANCE_SECONDS))) return s
         if (!force) {
@@ -207,6 +212,7 @@ object RecordsReducer {
             source = previous?.source ?: RecordSource.MANUAL,
             site = d.site.takeIf { d.isInjection },
             patchCycle = d.patchCycle.takeIf { patch },
+            p4Context = d.p4Context.takeIf { d.drug == Drug.PROGESTERONE_MICRONIZED },
         )
         val doses = if (previous != null) s.doses.map { if (it.id == id) event else it } else s.doses + event
         return s.copy(
@@ -227,7 +233,7 @@ object RecordsReducer {
 
     /** One tap: record the last-used estrogen combination as taken right now. */
     fun quickLog(s: AppState, now: Instant, zone: ZoneId): AppState {
-        val last = s.doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen }.maxByOrNull { it.occurredAt } ?: return s
+        val last = s.doses.filter { it.status.wasTaken && it.drug.isEstrogen }.maxByOrNull { it.occurredAt } ?: return s
         val event = last.copy(
             id = UUID.randomUUID(), occurredAt = now, sourceZoneId = zone.id, status = DoseStatus.ADMINISTERED,
             note = null, revision = 1, source = RecordSource.MANUAL,
@@ -250,7 +256,7 @@ object RecordsReducer {
             saveDose(s.copy(confirm = null), now, zone, force = true)
         } else {
             val base = s.copy(confirm = null)
-            val last = base.doses.filter { it.status.wasTaken && !it.drug.isAntiandrogen }.maxByOrNull { it.occurredAt } ?: dup.existing
+            val last = base.doses.filter { it.status.wasTaken && it.drug.isEstrogen }.maxByOrNull { it.occurredAt } ?: dup.existing
             val event = last.copy(
                 id = UUID.randomUUID(), occurredAt = now, sourceZoneId = zone.id, status = DoseStatus.ADMINISTERED,
                 note = null, revision = 1, source = RecordSource.MANUAL,
@@ -300,6 +306,7 @@ object RecordsReducer {
             weekdays = weekdays,
             timeMinutes = d.timeMinutes,
             patchCycle = d.patchCycle.takeIf { patch },
+            p4Context = d.p4Context.takeIf { d.drug == Drug.PROGESTERONE_MICRONIZED },
         )
     }
 
@@ -402,6 +409,9 @@ object RecordsReducer {
         val drawAt = resolveDrawTime(d, now, zone)
         if (drawAt != null && drawAt.isAfter(now.plusSeconds(FUTURE_TOLERANCE_SECONDS))) return s
         val analytes = buildList {
+            d.p4Value?.let {
+                add(LabAnalyteValue(Analyte.PROGESTERONE, it, d.p4UnitLabel, LabAnalyteValue.canonical(Analyte.PROGESTERONE, it, d.p4UnitLabel)))
+            }
             d.e2Value?.takeIf { it > 0.0 }?.let {
                 add(LabAnalyteValue(Analyte.ESTRADIOL, it, d.e2Unit.label, LabAnalyteValue.canonical(Analyte.ESTRADIOL, it, d.e2Unit.label)))
             }
@@ -427,7 +437,7 @@ object RecordsReducer {
             labs = labs,
             sheet = Sheet.None,
             // Keep the units and method the user just confirmed; drop everything else.
-            labDraft = LabDraft(e2Unit = d.e2Unit, ttUnit = d.ttUnit, assay = d.assay),
+            labDraft = LabDraft(e2Unit = d.e2Unit, ttUnit = d.ttUnit, assay = d.assay, p4Unit = d.p4Unit),
             undo = snapshot(s),
             toast = null,
         )
@@ -462,7 +472,8 @@ object RecordsReducer {
 
     private fun sameLab(a: LabResult, b: LabResult): Boolean =
         a.collectedAt == b.collectedAt &&
-            a.analytes.map { it.analyte to it.reportedValue }.toSet() == b.analytes.map { it.analyte to it.reportedValue }.toSet()
+            a.analytes.map { Triple(it.analyte, it.reportedValue, it.reportedUnit) }.toSet() ==
+            b.analytes.map { Triple(it.analyte, it.reportedValue, it.reportedUnit) }.toSet()
 }
 
 /** What the result screen needs after a lab is saved: expectation, difference, cycle position, calibration. */
@@ -477,7 +488,7 @@ object LabAnalyzer {
         val last = at?.let { Analysis.lastEstrogenBefore(s.doses, it) }
         val hours = if (at != null && last != null) (at.toEpochMilli() - last.occurredAt.toEpochMilli()) / 3_600_000.0 else null
         val beforeFirst = at != null && last == null &&
-            s.doses.any { it.status.wasTaken && !it.drug.isAntiandrogen && it.occurredAt.isAfter(at) }
+            s.doses.any { it.status.wasTaken && it.drug.isEstrogen && it.occurredAt.isAfter(at) }
 
         val e2 = lab.analytes.firstOrNull { it.analyte == Analyte.ESTRADIOL }?.let { v ->
             val pg = Analysis.canonical(v)
@@ -515,6 +526,9 @@ object LabAnalyzer {
                 .sortedBy { it.collectedAt }
                 .indexOfFirst { it.id == lab.id }.takeIf { it >= 0 }?.plus(1)
         }
-        return LabResultSummary(lab.id, at, e2, tt, hours, beforeFirst, ordinal)
+        val p4 = lab.analytes.firstOrNull { it.analyte == Analyte.PROGESTERONE }?.let {
+            P4Outcome(it.reportedValue, it.reportedUnit, at?.let { t -> Analysis.p4At(s.doses, t)?.median })
+        }
+        return LabResultSummary(lab.id, at, e2, tt, hours, beforeFirst, ordinal, p4)
     }
 }

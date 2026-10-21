@@ -9,6 +9,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -75,6 +78,7 @@ class AppFlowTest {
     }
 
     private fun wipe() {
+        context.getSharedPreferences("chat_setup", Context.MODE_PRIVATE).edit().clear().putBoolean("introSeen", true).commit()
         listOf("records.json", "settings.json").forEach { File(context.filesDir, it).delete() }
         File(context.filesDir, "backups").deleteRecursively()
     }
@@ -188,5 +192,58 @@ class AppFlowTest {
         launch()
         waitFor("지금 예상 E2")
         assertEquals(2, savedDoses())
+    }
+
+    @Test
+    fun oralP4HasAHomeEstimateAndItsOwnCurveEvenWhenTotalTIsHidden() {
+        val at = Instant.now().minusSeconds(2 * 3600L)
+        val p4 = DoseEvent(UUID.randomUUID(), at, "Asia/Seoul", Drug.PROGESTERONE_MICRONIZED,
+            Route.ORAL, 200.0, DoseUnit.MG, 200.0, DoseStatus.ADMINISTERED)
+        seed(usable.copy(gonadalStatus = GonadalStatus.DECLINED), RecordSnapshot(doses = listOf(p4)))
+        launch()
+        waitFor("지금 P4 복용분 예상")
+        compose.onNodeWithText("지금 P4 복용분 예상").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("예상 흐름").performClick()
+        compose.onNodeWithText("P4").performClick()
+        waitFor("예상 P4 복용분")
+        compose.onNodeWithText("P4 복용분 예상 · 실험적 모델").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("24시간").assertExists()
+        compose.onNodeWithText("범위 미산정", substring = true).assertExists()
+    }
+
+    @Test
+    fun aP4OnlyLabCanBeTypedSavedAndReadBack() {
+        seed(usable, RecordSnapshot(doses = listOf(dose(daysAgo = 3))))
+        launch()
+        waitFor("검사 결과 입력")
+        compose.onNodeWithText("검사 결과 입력").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("P4 실측값").performScrollTo().performTextInput("-3.5")
+        compose.onNodeWithText("검사값 저장").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("P4 실측값").performTextReplacement("3.5")
+        compose.onNodeWithText("검사값 저장").performClick()
+        waitFor("P4 실측 3.5 ng/mL")
+        compose.onNodeWithText("P4 실측 3.5 ng/mL").assertIsDisplayed()
+        eventually("P4 lab was not persisted", read = {
+            (Storage.records(context).load() as? RecordStore.Load.Ok)?.snapshot?.labs?.singleOrNull()?.analytes?.singleOrNull()?.reportedValue
+        }, ok = { it == 3.5 })
+    }
+
+    @Test
+    fun p4ProductAndMealCanBeEditedWithoutBeingGuessedFromHistory() {
+        val p4 = DoseEvent(UUID.randomUUID(), Instant.now().minusSeconds(7200), "Asia/Seoul",
+            Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 200.0, DoseUnit.MG, 200.0, DoseStatus.ADMINISTERED)
+        seed(usable, RecordSnapshot(doses = listOf(p4)))
+        launch()
+        compose.onNodeWithText("투약 기록하기").performScrollTo().performClick()
+        waitFor("제품·제형")
+        compose.onNodeWithText("유트로게스탄 연질캡슐").performScrollTo().performClick()
+        compose.onNodeWithText("공복").performScrollTo().performClick()
+        compose.onNodeWithText("기록 저장").performClick()
+        // A deliberate second dose is inside the duplicate window, so confirm the question.
+        waitFor("이미")
+        compose.onNodeWithText("그래도 기록", substring = true).performClick()
+        eventually("explicit P4 context was not saved", read = {
+            (Storage.records(context).load() as? RecordStore.Load.Ok)?.snapshot?.doses?.maxByOrNull { it.occurredAt }?.p4Context
+        }, ok = { it?.product == com.hormonelog.core.domain.P4Product.UTROGESTAN_SOFT_CAPSULE && it.meal == com.hormonelog.core.domain.P4Meal.FASTING })
     }
 }
