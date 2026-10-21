@@ -22,7 +22,15 @@ fun Route.calibrationGroup(): CalibrationGroup? = when (this) {
 }
 
 /** Dispatches a dose event to the right E2 route model, pulling parameters from the bundle. */
-class E2RouteModels(private val bundle: EvidenceBundle) {
+class E2RouteModels(bundle: EvidenceBundle) {
+
+    // Evidence is immutable for this engine: do not rebuild maps for every dose at every time step.
+    private val supported = Route.entries.filter(bundle::supports).toSet()
+    private val routeParameters = Route.entries.associateWith { bundle.parametersFor(it) }
+    private val injectionParameters = listOf(Route.IM_INJECTION, Route.SC_INJECTION).associateWith { route ->
+        listOf("EV", "EC").associateWith { bundle.parametersFor(route, it) }
+    }
+    private val patchParameters = listOf("tw", "ow").associateWith { bundle.parametersFor(Route.PATCH, it) }
 
     /**
      * Why [event] cannot be put on the curve, or null when it can. Anti-androgens never can
@@ -30,7 +38,7 @@ class E2RouteModels(private val bundle: EvidenceBundle) {
      */
     fun exclusionOf(event: DoseEvent): DoseExclusion? {
         if (!event.drug.isEstrogen) return null
-        if (!bundle.supports(event.route)) return DoseExclusion.NO_MODEL
+        if (event.route !in supported) return DoseExclusion.NO_MODEL
         return when (event.route) {
             Route.IM_INJECTION, Route.SC_INJECTION ->
                 if (esterFor(event.drug) == null || event.normalizedMilligrams == null) DoseExclusion.UNSUPPORTED_COMBINATION else null
@@ -58,19 +66,19 @@ class E2RouteModels(private val bundle: EvidenceBundle) {
             Route.IM_INJECTION, Route.SC_INJECTION -> {
                 val amount = event.normalizedMilligrams ?: return null
                 val ester = esterFor(event.drug) ?: return null
-                val p = bundle.parametersFor(event.route, ester)
+                val p = injectionParameters.getValue(event.route).getValue(ester)
                 val d = p["d"] ?: return null
                 E2ThreeCompartmentModel.concentration(elapsedDays, amount, d, p["k1"]!!, p["k2"]!!, p["k3"]!!)
             }
             Route.ORAL -> {
                 val amount = event.normalizedMilligrams ?: return null
-                val p = bundle.parametersFor(Route.ORAL)
+                val p = routeParameters.getValue(Route.ORAL)
                 val s = p["oralScale"] ?: return null
                 OralE2Model.concentration(elapsedDays, amount, s, p["oralKa"]!!, p["oralKe"]!!)
             }
             Route.SUBLINGUAL -> {
                 val amount = event.normalizedMilligrams ?: return null
-                val p = bundle.parametersFor(Route.SUBLINGUAL)
+                val p = routeParameters.getValue(Route.SUBLINGUAL)
                 val s = p["slScale"] ?: return null
                 SublingualE2Model.concentration(
                     elapsedDays, amount, s, p["slKa"]!!, p["slKe"]!!, p["slSwallowed"]!!,
@@ -81,7 +89,7 @@ class E2RouteModels(private val bundle: EvidenceBundle) {
                 // Strength is µg/day; the change cycle picks the twice-weekly or weekly profile.
                 val micrograms = event.patchMicrogramsPerDay ?: return null
                 val variant = if (event.patchCycle == PatchCycle.WEEKLY) "ow" else "tw"
-                val p = bundle.parametersFor(Route.PATCH, variant)
+                val p = patchParameters.getValue(variant)
                 val d = p["d"] ?: return null
                 E2ThreeCompartmentModel.concentration(elapsedDays, micrograms, d, p["k1"]!!, p["k2"]!!, p["k3"]!!)
             }

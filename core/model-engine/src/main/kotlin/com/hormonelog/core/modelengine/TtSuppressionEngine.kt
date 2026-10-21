@@ -23,7 +23,15 @@ data class TtAdjustment(
  *
  * Nobody who chose not to say whether they have testes gets a curve at all.
  */
-class TtSuppressionEngine(private val bundle: EvidenceBundle) {
+class TtSuppressionEngine internal constructor(private val bundle: EvidenceBundle, integrationStepMinutes: Int) {
+
+    /** 5 min stays below the numerical tolerance in the tested off-grid tablet scenarios. */
+    constructor(bundle: EvidenceBundle) : this(bundle, 5)
+
+    init {
+        require(integrationStepMinutes in 1..60 && 60 % integrationStepMinutes == 0)
+    }
+    private val stepMillis = integrationStepMinutes * 60_000L
 
     private val e2Engine = E2CurveEngine(bundle)
     private val pd = bundle.pdParameters()
@@ -73,11 +81,11 @@ class TtSuppressionEngine(private val bundle: EvidenceBundle) {
             return EstimateResult.Available(EstimateSeries(Hormone.TOTAL_T, times.map { point(it, baseline) }))
         }
 
-        // Integrate exposure on an epoch-aligned hourly grid; output density must
+        // Integrate exposure on an epoch-aligned grid; output density must
         // not change pharmacodynamics or miss short oral/sublingual exposures.
-        val warmupMillis = Math.floorDiv(from.minus(45, ChronoUnit.DAYS).toEpochMilli(), HOUR_MILLIS) * HOUR_MILLIS
-        val endMillis = (Math.floorDiv(to.toEpochMilli(), HOUR_MILLIS) + 1) * HOUR_MILLIS
-        val steps = ((endMillis - warmupMillis) / HOUR_MILLIS).toInt()
+        val warmupMillis = Math.floorDiv(from.minus(45, ChronoUnit.DAYS).toEpochMilli(), stepMillis) * stepMillis
+        val endMillis = (Math.floorDiv(to.toEpochMilli(), stepMillis) + 1) * stepMillis
+        val steps = ((endMillis - warmupMillis) / stepMillis).toInt()
         val e2res = e2Engine.curve(doses, Instant.ofEpochMilli(warmupMillis), Instant.ofEpochMilli(endMillis), samples = steps, adjustments = adjustments)
         if (e2res !is EstimateResult.Available) return e2res
         val e2pts = e2res.series.points
@@ -101,10 +109,10 @@ class TtSuppressionEngine(private val bundle: EvidenceBundle) {
         val outputE2 = e2Engine.curve(doses, from, to, samples = samples, adjustments = adjustments)
         if (outputE2 !is EstimateResult.Available) return outputE2
         val out = outputE2.series.points.map { p ->
-            val i = ((p.at.toEpochMilli() - warmupMillis) / HOUR_MILLIS).toInt()
+            val i = ((p.at.toEpochMilli() - warmupMillis) / stepMillis).toInt()
             val dtDays = (p.at.toEpochMilli() - e2pts[i].at.toEpochMilli()) / 86_400_000.0
             // Advance only up to the requested instant; interpolating the next
-            // hour's T would let a future administration affect an earlier value.
+            // grid point's T would let a future administration affect an earlier value.
             val effect = advance(effects[i], e2pts[i].median, p.median, dtDays)
             val hillTerm = (effect / ec50).pow(hill)
             val supprE2 = emaxE2 * hillTerm / (1.0 + hillTerm)
@@ -136,7 +144,6 @@ class TtSuppressionEngine(private val bundle: EvidenceBundle) {
     ): Double? = estimateAt(doses, instant, status, adjustments)?.median
 
     private companion object {
-        const val HOUR_MILLIS = 3_600_000L
         /** A measured pre-HRT value outside this is a unit slip or a different condition, not a starting point. */
         const val MEASURED_BASELINE_MIN = 150.0
         const val MEASURED_BASELINE_MAX = 1200.0

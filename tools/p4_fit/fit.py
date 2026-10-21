@@ -135,6 +135,9 @@ def main():
     report = {
         "software": {"python": platform.python_version(), "numpy": np.__version__, "scipy": scipy.__version__},
         "study": "Apolikhina 2023 Figure 3 R; Utrogestan 200mg fasting; HPLC-MS/MS",
+        "study_id": "apolikhina2023",
+        "conditions": {"product": "Utrogestan", "meal": "fasted", "dose_mg": 200,
+                       "assay": "HPLC-MS/MS", "target": "raw plotted group mean; baseline unresolved"},
         "data_kind": "selected digitized raw group means, not individual clinical data",
         "units": "ng/mL; original figure pg/mL",
         "training_hours": t[train].tolist(), "timepoint_holdout_hours": t[test].tolist(),

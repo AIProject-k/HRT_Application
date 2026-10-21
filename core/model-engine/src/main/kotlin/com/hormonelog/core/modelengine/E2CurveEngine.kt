@@ -59,15 +59,15 @@ class E2CurveEngine(private val bundle: EvidenceBundle) {
 
         val estrogenRoutes = modelled.filter { it.drug.isEstrogen }.map { it.route }.toSet()
         val frac = estrogenRoutes.maxOfOrNull { fractionFor(it, adjustments) } ?: DEFAULT_FRACTION
-        val scaleOf = modelled.associateWith { adjustments[it.route.calibrationGroup()]?.scale ?: 1.0 }
+        val scaledDoses = modelled.map { it to (adjustments[it.route.calibrationGroup()]?.scale ?: 1.0) }
         val span = (to.toEpochMilli() - from.toEpochMilli()).toDouble()
         val points = (0..samples).map { i ->
             val tMillis = from.toEpochMilli() + (span * i / samples).toLong()
             var contrib = 0.0
-            for (d in modelled) {
+            for ((d, scale) in scaledDoses) {
                 val elapsed = (tMillis - d.occurredAt.toEpochMilli()) / MILLIS_PER_DAY
                 if (elapsed <= 0.0 || elapsed > MAX_TAIL_DAYS) continue
-                contrib += (models.contribution(d, elapsed) ?: 0.0) * scaleOf.getValue(d)
+                contrib += (models.contribution(d, elapsed) ?: 0.0) * scale
             }
             val sum = baseline + contrib
             EstimatePoint(Instant.ofEpochMilli(tMillis), sum, sum * (1 - frac), sum * (1 + frac))

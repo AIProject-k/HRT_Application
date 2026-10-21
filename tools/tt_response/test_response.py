@@ -1,6 +1,8 @@
 import math
 import unittest
 
+import response
+
 from response import simulate, validation_metrics
 
 
@@ -50,6 +52,36 @@ class ResponseTest(unittest.TestCase):
         self.assertEqual(dict(n=2, mae_ng_dl=3.0, rmse_ng_dl=math.sqrt(10), bias_ng_dl=1.0),
                          validation_metrics(rows, [1, 10, 100, 22]))
         self.assertIsNone(validation_metrics([dict(measured_tt_ng_dl=20)], [25]))
+
+    def test_comparison_scores_both_models_on_the_same_validation_rows(self):
+        self.assertTrue(callable(getattr(response, 'compare_models', None)))
+        rows = [dict(effect_compartment_tt_ng_dl=30, measured_tt_ng_dl=20, split='validation', condition='A'),
+                dict(effect_compartment_tt_ng_dl=80, measured_tt_ng_dl=60, split='calibration', condition='A'),
+                dict(effect_compartment_tt_ng_dl='', measured_tt_ng_dl=40, split='validation', condition='B')]
+        result = response.compare_models(rows, [22, 50, 41])
+        common = result['common_validation']
+        self.assertEqual(1, common['indirect_response']['n'])
+        self.assertEqual(2.0, common['indirect_response']['mae_ng_dl'])
+        self.assertEqual(10.0, common['effect_compartment']['mae_ng_dl'])
+        self.assertEqual(-8.0, common['mae_change_ng_dl'])
+        self.assertEqual(1, result['validation_rows_without_reference'])
+        self.assertEqual(['A'], list(result['by_condition']))
+
+    def test_model_disagreement_does_not_become_measured_validation(self):
+        self.assertTrue(callable(getattr(response, 'compare_models', None)))
+        result = response.compare_models([dict(effect_compartment_tt_ng_dl=30)], [22])
+        self.assertEqual(8.0, result['model_disagreement']['mae_ng_dl'])
+        self.assertIsNone(result['common_validation'])
+
+    def test_turnover_resolution_converges_on_changing_exposure(self):
+        rows = [dict(day=d, e2_pg_ml=e, cpa_level=0) for d, e in [(0, 0), (0.1, 1000), (0.2, 0), (1, 100)]]
+        reference = simulate(rows, self.params, step_minutes=1)[-1]
+        coarse = simulate(rows, self.params, step_minutes=60)[-1]
+        fine = simulate(rows, self.params, step_minutes=5)[-1]
+        self.assertLess(abs(fine-reference), abs(coarse-reference))
+        self.assertLess(abs(fine-reference), 0.1)
+        with self.assertRaises(ValueError):
+            simulate(rows, self.params, step_minutes=0)
 
 
 if __name__ == '__main__':
