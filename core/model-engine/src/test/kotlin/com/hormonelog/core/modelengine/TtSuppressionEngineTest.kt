@@ -105,4 +105,40 @@ class TtSuppressionEngineTest {
             engine.curve(emptyList(), start, now),
         )
     }
+
+    @Test
+    fun skippedCyproteroneDoesNotSuppressTestosterone() {
+        val from = start.plus(30, ChronoUnit.DAYS)
+        val base = engine.curve(evBiweekly(), from, now)
+        val skipped = cpaDaily().map { it.copy(status = DoseStatus.SKIPPED) }
+        assertEquals(base, engine.curve(evBiweekly() + skipped, from, now))
+    }
+
+    @Test
+    fun postOrchiectomyResidualIsIndependentOfE2AndCyproterone() {
+        val from = start.plus(30, ChronoUnit.DAYS)
+        val r = engine.curve(evBiweekly() + cpaDaily(), from, now, status = GonadalStatus.POST_ORCHIECTOMY) as EstimateResult.Available
+        assertTrue(r.series.points.all { it.median == 30.0 })
+        assertEquals(r, engine.curve(emptyList(), from, now, status = GonadalStatus.POST_ORCHIECTOMY))
+    }
+
+    @Test
+    fun oralExposureDoesNotDependOnChartSamplingOrSinglePointLookup() {
+        val oral = (0..89).map { dose(Route.ORAL, Drug.ESTRADIOL_TABLET, 4.0, start.plus(it.toLong(), ChronoUnit.DAYS)) }
+        val from = now.minus(7, ChronoUnit.DAYS)
+        val sparse = engine.curve(oral, from, now, samples = 7) as EstimateResult.Available
+        val dense = engine.curve(oral, from, now, samples = 336) as EstimateResult.Available
+        for (p in sparse.series.points) {
+            assertEquals("sampling at ${p.at}", dense.series.pointAt(p.at)!!.median, p.median, 0.05)
+        }
+        assertEquals("point lookup", dense.series.points.last().median, engine.estimateAt(oral, now)!!.median, 0.05)
+    }
+
+    @Test
+    fun aFutureDoseWithinTheSameHourCannotChangeAnEarlierEstimate() {
+        val at = now.plusSeconds(15 * 60)
+        val future = dose(Route.SUBLINGUAL, Drug.ESTRADIOL_TABLET, 4.0, now.plusSeconds(30 * 60))
+        assertEquals(engine.estimateAt(evBiweekly(), at)!!.median,
+            engine.estimateAt(evBiweekly() + future, at)!!.median, 1e-9)
+    }
 }

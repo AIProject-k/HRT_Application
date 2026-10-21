@@ -64,9 +64,20 @@ def fit(t, y, dual=False):
 
 def score(observed, predicted):
     return {
+        "n": int(len(observed)),
+        "mae_ng_ml": float(np.mean(np.abs(predicted-observed))),
+        "bias_ng_ml": float(np.mean(predicted-observed)),
         "rmse_ng_ml": float(np.sqrt(np.mean((observed-predicted)**2))),
         "log_rmse_with_0_025_offset": float(np.sqrt(np.mean((np.log(observed+.025)-np.log(predicted+.025))**2))),
     }
+
+
+def digitization_scenarios(t, y):
+    """Deterministic +/-2px stress scenarios, not a statistical uncertainty band."""
+    factor = 10**(2/56)
+    early_factor = np.where(np.asarray(t) <= 8, factor, 1/factor)
+    return {"all_up": y*factor, "all_down": y/factor,
+            "early_up_tail_down": y*early_factor, "early_down_tail_up": y/early_factor}
 
 
 def main():
@@ -104,8 +115,20 @@ def main():
                 "absorption_rate_per_hour": ke+float(np.exp(opt.x[1])), "amplitude_ng_ml": float(np.exp(opt.x[2])), "lag_hours": float(opt.x[3])}
         curves[name] = predict(opt.x, dense, dual)
     results["legacy_ANSM"] = {"training": score(y[train], legacy(t[train])), "timepoint_holdout": score(y[test], legacy(t[test]))}
+    sensitivity = {}
+    for scenario, perturbed in digitization_scenarios(t, y).items():
+        models = {"legacy_ANSM": {"timepoint_holdout": score(perturbed[test], legacy(t[test]))}}
+        for name, dual in [("lagged_one_compartment", False), ("lagged_fast_slow_elimination", True)]:
+            opt = fit(t[train], perturbed[train], dual)
+            models[name] = {
+                "parameters_transformed": opt.x.tolist(),
+                "timepoint_holdout": score(perturbed[test], predict(opt.x, t[test], dual)),
+                "parameters_at_bounds": np.flatnonzero(opt.active_mask).tolist(),
+                "optimizer_success": bool(opt.success),
+            }
+        sensitivity[scenario] = models
     for name, curve in curves.items():
-        area24 = float(np.trapz(curve[dense <= 24], dense[dense <= 24]))
+        area24 = float(np.trapezoid(curve[dense <= 24], dense[dense <= 24]))
         results[name]["curve_AUC_0_24_ng_h_ml"] = area24
         results[name]["external_AUC_ratio_to_Qin_fasted_36_38"] = area24/36.38
         results[name]["maximum_of_mean_curve_ng_ml"] = float(max(curve))
@@ -124,6 +147,8 @@ def main():
             "Single-dose raw mean fit is not an established repeated-dose exogenous-only kernel.",
         ],
         "external_check_limitations": "Qin is a different population and baseline-corrected. AUC ratio is a stress test, not a validated error percentage. Mean individual Cmax is not the max of a mean curve.",
+        "digitization_sensitivity": sensitivity,
+        "sensitivity_limitations": "Four deterministic vertical +/-2px perturbations including opposed early/tail shifts; not independent pixel error sampling, time-axis error, biological variability, or a confidence interval. Baseline and external-validation adoption failures still apply.",
         "models": results,
     }
     OUT.mkdir(parents=True, exist_ok=True)

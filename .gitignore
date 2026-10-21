@@ -4,6 +4,7 @@
 local.properties
 build/
 **/build/
+tools/**/__pycache__/
 .superpowers/
 .worktrees/
 

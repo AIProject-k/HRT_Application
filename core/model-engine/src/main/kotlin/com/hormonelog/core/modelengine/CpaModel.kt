@@ -2,6 +2,8 @@ package com.hormonelog.core.modelengine
 
 import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.Drug
+import com.hormonelog.core.domain.DoseUnit
+import com.hormonelog.core.domain.Route
 import kotlin.math.exp
 
 /**
@@ -16,10 +18,12 @@ class CpaModel(f: Double, private val ka: Double, private val ke: Double) {
     fun levelAt(doses: List<DoseEvent>, atMillis: Long): Double {
         var level = 0.0
         for (dprime in doses) {
-            if (dprime.drug != Drug.CYPROTERONE) continue
+            if (dprime.drug != Drug.CYPROTERONE || !dprime.status.wasTaken ||
+                dprime.route != Route.ORAL || dprime.enteredUnit != DoseUnit.MG) continue
             val elapsed = (atMillis - dprime.occurredAt.toEpochMilli()) / 86_400_000.0
             if (elapsed <= 0.0) continue
             val mg = dprime.normalizedMilligrams ?: dprime.amountEntered
+            if (!mg.isFinite() || mg <= 0.0) continue
             val v = exp(-ke * elapsed) - exp(-ka * elapsed)
             if (v > 0.0) level += f * mg * v
         }
