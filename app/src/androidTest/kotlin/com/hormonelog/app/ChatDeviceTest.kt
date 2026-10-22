@@ -9,12 +9,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hormonelog.app.chat.*
 import com.hormonelog.app.feature.chat.ChatScreen
-import com.hormonelog.app.platform.TermuxChat
 import com.hormonelog.app.state.*
 import com.hormonelog.app.ui.theme.HormoneLogTheme
 import com.hormonelog.core.data.RecordStore
-import com.hormonelog.core.data.SettingsStore
-import com.hormonelog.core.domain.ChatModel
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -72,9 +69,8 @@ class ChatDeviceTest {
         }
     }
 
-    @Test fun preloadedReadShortcutsWorkWithoutClaudeOnDevice() {
-        val args = InstrumentationRegistry.getArguments()
-        check(args.getString("dedicatedEmulator") == "yes" || args.getString("liveClaude") == "yes")
+    @Test fun preloadedReadShortcutsWorkWithoutAModelOnDevice() {
+        check(InstrumentationRegistry.getArguments().getString("dedicatedEmulator") == "yes")
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var vm: AppViewModel
             lateinit var recordsFile: File
@@ -141,37 +137,6 @@ class ChatDeviceTest {
                 assertEquals(1, calls)
                 assertArrayEquals(before, file.readBytes())
             } finally { file.delete() }
-        }
-    }
-
-    @Test fun liveCurrentStatusAndLabQueriesKeepPersonalRecordsUnchanged() {
-        check(InstrumentationRegistry.getArguments().getString("liveClaude") == "yes")
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            lateinit var vm: AppViewModel
-            lateinit var recordsFile: File
-            scenario.onActivity { activity ->
-                check(TermuxChat.permitted(activity))
-                vm = ViewModelProvider(activity)[AppViewModel::class.java]
-                recordsFile = File(activity.filesDir, "records.json")
-            }
-            val before = vm.state.snapshot
-            val beforeBytes = recordsFile.readBytes()
-            compose.runOnIdle { vm.chatSetup.done() }
-            compose.onNodeWithText("채팅으로 기록").performClick()
-            compose.onNodeWithText("현재 상태", useUnmergedTree = true).performClick()
-            compose.waitUntil(10_000) { vm.chat.ui.lines.lastOrNull()?.text?.startsWith("현재 상태") == true }
-            compose.onNodeWithText("최근 검사", useUnmergedTree = true).performClick()
-            compose.waitUntil(10_000) { vm.chat.ui.lines.last().text.startsWith("실측 검사") }
-            ensureLiveConnection(vm)
-            for ((text, prefix) in listOf("현재 상태 알려줘" to "현재 상태", "최근 검사 결과 보여줘" to "실측 검사")) {
-                val count = vm.chat.ui.lines.size
-                compose.onNode(hasSetTextAction()).performTextInput(text)
-                compose.onNodeWithText("보내기").performClick()
-                compose.waitUntil(95_000) { !vm.chat.ui.busy && vm.chat.ui.lines.size >= count + 2 }
-                compose.runOnIdle { assertTrue(vm.chat.ui.lines.last().text, vm.chat.ui.lines.last().text.startsWith(prefix)) }
-            }
-            assertEquals(before, vm.state.snapshot)
-            assertArrayEquals(beforeBytes, recordsFile.readBytes())
         }
     }
 
@@ -325,43 +290,4 @@ class ChatDeviceTest {
         }
     }
 
-    /** Opt-in live provider check. Never deletes or registers records on the personal phone. */
-    @Test fun liveSubscriptionRoundTripReadsRecordsWithoutChangingThem() {
-        check(InstrumentationRegistry.getArguments().getString("liveClaude") == "yes")
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            lateinit var vm: AppViewModel
-            scenario.onActivity { activity ->
-                check(TermuxChat.permitted(activity))
-                vm = ViewModelProvider(activity)[AppViewModel::class.java]
-            }
-            val before = vm.state.snapshot
-            val expected = ChatCommands.apply(vm.state, ChatCommand("recent"), emptyList(), UUID.randomUUID(), Instant.now(), ZoneId.systemDefault()).message
-            compose.runOnIdle { vm.chatSetup.done() }
-            compose.onNodeWithText("채팅으로 기록").performClick()
-            ensureLiveConnection(vm)
-            val originalModel = vm.chat.model
-            try {
-                for (model in ChatModel.entries) {
-                    compose.onNodeWithText(model.label, useUnmergedTree = true).performClick()
-                    compose.runOnIdle { assertEquals(model, vm.chat.model) }
-                    val count = vm.chat.ui.lines.size
-                    compose.onNode(hasSetTextAction()).performTextInput("최근 기록 보여줘")
-                    compose.onNodeWithText("보내기").performClick()
-                    compose.waitUntil(95_000) { !vm.chat.ui.busy && vm.chat.ui.lines.size >= count + 2 }
-                    compose.runOnIdle {
-                        assertEquals(expected, vm.chat.ui.lines.last().text)
-                        assertEquals(before, vm.state.snapshot)
-                    }
-                }
-            } finally { compose.runOnIdle { vm.chat.selectModel(originalModel) } }
-        }
-    }
-
-    private fun ensureLiveConnection(vm: AppViewModel) {
-        if (vm.chat.ui.connected) return
-        compose.runOnIdle { vm.chatSetup.open(); vm.chatSetup.start() }
-        compose.waitUntil(180_000) { vm.chatSetup.ui.stage in setOf(ChatSetupStage.READY, ChatSetupStage.ERROR) }
-        assertEquals(vm.chatSetup.ui.message, ChatSetupStage.READY, vm.chatSetup.ui.stage)
-        compose.onNodeWithText("채팅 사용하기").performClick()
-    }
 }

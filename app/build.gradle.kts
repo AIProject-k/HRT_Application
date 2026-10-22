@@ -14,13 +14,6 @@ val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
-val preparePhoneChatAssets = tasks.register<Sync>("preparePhoneChatAssets") {
-    from(rootProject.file("tools/phone_chat")) {
-        include("setup.sh", "setup.py", "hrt-login.py", "hrt-chat", "hrt-chat-guest", "schema.json", "prompt.txt")
-    }
-    into(layout.buildDirectory.dir("generated/phoneChatAssets/chat"))
-}
-
 android {
     namespace = "com.hormonelog.app"
     compileSdk = 36
@@ -29,8 +22,8 @@ android {
         applicationId = "com.hormonelog.app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -60,15 +53,12 @@ android {
     buildFeatures {
         compose = true
     }
-    sourceSets.getByName("main").assets.directories.add(layout.buildDirectory.dir("generated/phoneChatAssets").get().asFile.absolutePath)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
-tasks.named("preBuild").configure { dependsOn(preparePhoneChatAssets) }
-
 kotlin {
     jvmToolchain(17)
 }

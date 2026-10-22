@@ -7,7 +7,6 @@ import com.hormonelog.app.state.AppState
 import com.hormonelog.app.state.RecordsReducer
 import com.hormonelog.app.state.UndoSnapshot
 import com.hormonelog.core.data.RecordSnapshot
-import com.hormonelog.core.domain.ChatModel
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -27,7 +26,6 @@ class ChatSession(
     private val request: (UUID, String, (Result<String>) -> Unit) -> Unit,
     private val cancelRequest: (UUID) -> Unit,
     private val clock: () -> Instant = Instant::now,
-    private val onModelChanged: (ChatModel) -> Unit = {},
     private val conversationStore: ChatConversationStore? = null,
     private val allowOfflineInput: Boolean = false,
 ) {
@@ -86,10 +84,6 @@ class ChatSession(
 
     fun connect() { ui = ui.copy(connected = true) }
     fun disconnect() { suspendRequest(); ui = ui.copy(connected = false) }
-    val model: ChatModel get() = state().settings.chatModel
-    fun selectModel(model: ChatModel) {
-        if (!ui.busy && !ui.saveFailed && model != this.model) onModelChanged(model)
-    }
     val memoryCount: Int get() = state().chatMemories.size
     private fun localShortcut(text: String): ChatShortcut? {
         val shortcut = ChatShortcut.find(text) ?: return null

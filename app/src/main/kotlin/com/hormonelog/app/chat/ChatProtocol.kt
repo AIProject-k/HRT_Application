@@ -14,7 +14,7 @@ object ChatProtocol {
     fun decode(raw: String): ChatCommand {
         require(raw.length <= 60_000)
         val envelope = JSONObject(raw)
-        require(!envelope.optBoolean("is_error")) { "Claude 요청 실패" }
+        require(!envelope.optBoolean("is_error")) { "AI 요청 실패" }
         val o = envelope.optJSONObject("structured_output") ?: throw IllegalArgumentException("구조화된 응답이 없어요")
         val action = o.getString("action")
         require(action in setOf("ask", "dose", "batch", "lab") || action in ChatCommands.readActions || action in ChatMemoryActions.actions)

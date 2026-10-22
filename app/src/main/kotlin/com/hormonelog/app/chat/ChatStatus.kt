@@ -14,7 +14,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Read-only answers built from local records; none of these values come from Claude. */
+/** Read-only answers built from local records; none of these values come from an LLM. */
 object ChatStatus {
     fun nextInjection(s: AppState, now: Instant, zone: ZoneId): String {
         val next = HomeLogic.nextDose(s.regimens.filter { it.route in setOf(Route.IM_INJECTION, Route.SC_INJECTION) },

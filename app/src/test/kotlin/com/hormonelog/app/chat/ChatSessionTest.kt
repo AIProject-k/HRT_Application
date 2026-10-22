@@ -45,29 +45,6 @@ class ChatSessionTest {
         }
     }
 
-    @Test fun modelChangesAreBlockedWhileRequestingOrSavingAndPreservedByReset() {
-        var current = AppState()
-        var reply: ((Result<String>) -> Unit)? = null
-        val chat = ChatSession({ current }, { next, done -> current = next; done(false) },
-            { _, _, done -> reply = done }, {}, onModelChanged = { model ->
-                current = current.copy(settings = current.settings.copy(chatModel = model))
-            })
-        assertEquals(com.hormonelog.core.domain.ChatModel.HAIKU, chat.model)
-        chat.selectModel(com.hormonelog.core.domain.ChatModel.OPUS)
-        chat.connect(); chat.send("최근 기록 보여줘")
-        chat.selectModel(com.hormonelog.core.domain.ChatModel.SONNET)
-        assertEquals(com.hormonelog.core.domain.ChatModel.OPUS, chat.model)
-        reply!!(Result.success("""{"structured_output":{"action":"recent"}}"""))
-        chat.selectModel(com.hormonelog.core.domain.ChatModel.SONNET)
-        chat.reset()
-        assertEquals(com.hormonelog.core.domain.ChatModel.SONNET, chat.model)
-        chat.connect(); chat.send("2020-01-01 15:30 EV 5mg 근육주사 기록해줘")
-        reply!!(Result.success("""{"structured_output":{"action":"dose","drug":"EV","route":"근육주사","amount":"5mg","date":"2020-01-01","time":"15:30"}}"""))
-        assertTrue(chat.ui.saveFailed)
-        chat.selectModel(com.hormonelog.core.domain.ChatModel.HAIKU)
-        assertEquals(com.hormonelog.core.domain.ChatModel.SONNET, chat.model)
-    }
-
     private var state = AppState()
     private var response: ((Result<String>) -> Unit)? = null
     private var ack: ((Boolean) -> Unit)? = null
