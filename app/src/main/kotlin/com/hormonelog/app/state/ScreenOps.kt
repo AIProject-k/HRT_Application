@@ -108,7 +108,7 @@ object JournalOps {
             JournalEntry.Kind.EXTRA_LABS -> RecordTab.LABS
         }
         val draft = JournalDraft(
-            editingId = id, tab = tab, score = j.condition ?: 3, symptoms = j.symptoms, note = j.note.orEmpty(),
+            editingId = id, tab = tab, score = j.condition, symptoms = j.symptoms, note = j.note.orEmpty(),
             weight = j.weightKg?.let(::plainNumber).orEmpty(), systolic = j.systolic?.toString().orEmpty(), diastolic = j.diastolic?.toString().orEmpty(),
             labs = j.extraLabs.mapValues { plainNumber(it.value) },
         )
@@ -147,6 +147,12 @@ object JournalOps {
             toast = if (previous != null) "기록을 고쳤어요" else "기록했어요 · 타임라인에 보여요",
         )
         return Nav.back(saved).copy(toast = saved.toast, undo = saved.undo)
+    }
+
+    /** A note written in chat: no score, no symptoms, stamped with the time it was written. */
+    fun addNote(s: AppState, text: String, now: Instant, zone: ZoneId): AppState {
+        val entry = JournalEntry(id = UUID.randomUUID(), at = now, sourceZoneId = zone.id, note = text)
+        return s.copy(journal = (s.journal + entry).sortedBy { it.at }, undo = RecordsReducer.undoPoint(s), toast = "메모를 저장했어요")
     }
 
     fun delete(s: AppState, id: UUID): AppState =

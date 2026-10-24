@@ -75,6 +75,7 @@ fun ChatScreen(chat: ChatSession, back: () -> Unit, setup: com.hormonelog.app.ch
             if (ui.canUndo) HlButton("직전 채팅 등록 되돌리기", chat::undo, kind = HlButtonKind.Secondary, enabled = !ui.busy)
             if (ui.saveFailed) HlButton("저장 재시도", chat::retrySave, enabled = !ui.busy)
             if (ui.busy && !ui.saving) HlButton("응답 취소", chat::cancel, kind = HlButtonKind.Secondary)
+            HlButton("메모로 저장", chat::saveMemo, kind = HlButtonKind.Secondary, enabled = !ui.busy && ui.input.isNotBlank())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
                 ChatComposer(ui.input, chat::editInput, Modifier.weight(1f))
                 HlButton("보내기", chat::submit, enabled = chat.canSend(ui.input), minHeight = 52.dp, size = HlSize.t14)

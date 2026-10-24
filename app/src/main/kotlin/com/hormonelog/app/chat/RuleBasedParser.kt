@@ -9,7 +9,7 @@ object RuleBasedParser {
     fun parse(payload: String, state: AppState): ChatCommand? {
         val p=JSONObject(payload)
         val messages=p.getJSONArray("messages")
-        val inputs=(0 until messages.length()).map { messages.getJSONObject(it) }.filter { it.optString("role")=="user" }.map { it.getString("text") }
+        val inputs=KoreanTime.normalizeInputs((0 until messages.length()).map { messages.getJSONObject(it) }.filter { it.optString("role")=="user" }.map { it.getString("text") })
         val last=inputs.lastOrNull() ?: return null
         val key=last.replace(Regex("[\\s.!?]"),"")
         val reads=mapOf("현재호르몬수치보여줘" to "status", "현재상태알려줘" to "status", "지금내수치얼마야" to "status",
@@ -27,8 +27,8 @@ object RuleBasedParser {
         if (amounts.size>1) return null
         fun literals(pattern: String) = Regex(pattern,RegexOption.IGNORE_CASE).findAll(all).map { it.value }.distinct().toList()
         val routes=literals("근육주사|피하주사|경구|설하|(?<![a-z])im(?![a-z])|(?<![a-z])sc(?![a-z])")
-        val dates=literals("\\d{4}-\\d{2}-\\d{2}|오늘|어제|그제")
-        val times=literals("방금|지금|(?:오전|오후)\\s*\\d{1,2}(?::\\d{2}|시(?:\\s*\\d{1,2}분|\\s*반)?)|(?<![0-9])\\d{1,2}:\\d{2}(?![0-9])")
+        val dates=literals("\\d{4}\\s*년\\s*\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일|\\d{4}[-./]\\d{1,2}[-./]\\d{1,2}|\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일|\\d{1,2}/\\d{1,2}|\\d{1,3}\\s*일\\s*전|오늘|어제|그제|그저께|엊그제|내일|모레")
+        val times=literals("방금|지금|정오|\\d{1,2}\\s*시간\\s*전|\\d{1,3}\\s*분\\s*전|(?:(?:오전|오후|아침|저녁|밤|새벽|낮)\\s*)?\\d{1,2}\\s*시(?:\\s*\\d{1,2}\\s*분|\\s*반)?|(?<![0-9])\\d{1,2}:\\d{2}(?![0-9])")
         if(routes.size>1 || dates.size>1 || times.size>1) return null
         return ChatCommand("dose",drug=drugs.single(),route=routes.singleOrNull().orEmpty(),amount=amounts.singleOrNull().orEmpty(),
             date=dates.singleOrNull().orEmpty(),time=times.singleOrNull().orEmpty())

@@ -17,7 +17,7 @@ class LiteRtLmEngine(private val manager: ModelManager, private val cache: File)
             checkCancelled()
             cache.mkdirs()
             val created=Engine(EngineConfig(manager.model.absolutePath,backend=Backend.CPU(),maxNumTokens=4096,cacheDir=cache.absolutePath))
-            try { created.initialize() } catch(t: Throwable) { if(created.isInitialized()) created.close(); throw t }
+            try { created.initialize() } catch(t: Throwable) { if(created.isInitialized()) created.close(); throw LocalAiException(LocalAiStage.LOAD, t) }
             engine=created; runtime=created
         }
         checkCancelled()
@@ -29,7 +29,8 @@ class LiteRtLmEngine(private val manager: ModelManager, private val cache: File)
             conversation=current
             try {
                 checkCancelled()
-                val response=current.sendMessage(prompt,extraContext=mapOf("enable_thinking" to false),maxOutputToken=768)
+                val response=try { current.sendMessage(prompt,extraContext=mapOf("enable_thinking" to false),maxOutputToken=768) }
+                    catch(e: CancellationException) { throw e } catch(t: Throwable) { throw LocalAiException(LocalAiStage.INFERENCE, t) }
                 checkCancelled()
                 require(response.toolCalls.isEmpty()) { "AI 도구 요청은 실행하지 않아요." }
                 response.toString()

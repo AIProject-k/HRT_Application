@@ -5,8 +5,6 @@ import com.hormonelog.app.feature.common.label
 import com.hormonelog.app.state.*
 import com.hormonelog.core.domain.*
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 import java.util.UUID
 
@@ -18,7 +16,7 @@ data class ChatCommand(
     val amountUnit: String = "", val doses: List<ChatCommand> = emptyList(),
     val memoryName: String = "", val memoryTarget: String = "",
 )
-data class ChatDecision(val message: String, val next: AppState? = null)
+data class ChatDecision(val message: String, val next: AppState? = null, val closes: Boolean = false)
 enum class ChatInputMode { RECORD, TEMPLATE, SHORTCUT }
 
 /** Parsers extract literal evidence; only this local validator may turn it into records. */
@@ -54,8 +52,15 @@ object ChatCommands {
     fun reservedName(name: String) = compact(name) in drugs || compact(name) in routes || compact(name) in
         setOf("오늘", "어제", "방금", "지금", "최근", "기록", "등록", "취소", "기억", "단축어", "e2", "p4", "tt") || ChatShortcut.find(name) != null
 
+    fun switchesDrug(s: AppState, pending: ChatCommand, text: String): Boolean {
+        val before = knownDrug(s, pending.drug)?.drug ?: return false
+        val mentioned = drugNames(s).filter { compact(text).contains(compact(it)) }.mapNotNull { knownDrug(s, it)?.drug }
+        return mentioned.isNotEmpty() && before !in mentioned
+    }
+
     fun apply(s: AppState, c: ChatCommand, inputs: List<String>, id: UUID, now: Instant, zone: ZoneId, previousDoseAt: Instant? = null, mode: ChatInputMode = ChatInputMode.RECORD): ChatDecision {
         fun ask(message: String) = ChatDecision(message)
+        fun refuse(message: String) = ChatDecision(message, closes = true)
         if (mode == ChatInputMode.RECORD && c.action in setOf("dose", "batch", "lab") && inputs.any { Regex("기억해|기억하|외워|단축어로|별명으로").containsMatchIn(it) })
             return ask("기억 요청은 단축어로 저장해야 해요. 실제 투약으로 등록하지 않았어요.")
         if (c.action == "batch") {
@@ -81,18 +86,15 @@ object ChatCommands {
         val additional = inputs.any { Regex("도(?:\\s*(?:기록해줘|등록해줘|추가해줘))?[.!?]?$|같은\\s*시간").containsMatchIn(it.trim()) }
         if ((mode == ChatInputMode.RECORD && !Regex("기록|등록|저장|추가|맞았|맞고|맞음|맞은|먹음|먹었|먹엇|먹은|먹고|복용").containsMatchIn(text) && !(additional && previousDoseAt != null)) ||
             (mode != ChatInputMode.TEMPLATE &&
-            Regex("하지마|하지말|취소|안맞|안먹|먹지않|복용안|복용하지않|복용전|투약전|먹기전|맞기전|먹어도|복용해도|맞아도|예정|어떻게|예시|만약").containsMatchIn(text))) {
-            return ask("실제로 투약하거나 검사한 내용을 등록할 때 ‘기록해줘’라고 말씀해 주세요.")
+            Regex("하지마|하지말|취소|안맞|안먹|먹지않|복용안|복용하지않|복용전|투약전|먹기전|맞기전|먹어도|복용해도|맞아도|예정|어떻게|예시|만약|못했|못먹|못맞|못함|않았|않음|안했|\\?").containsMatchIn(text))) {
+            return refuse("실제로 투약하거나 검사한 내용을 등록할 때 ‘기록해줘’라고 말씀해 주세요.")
         }
         fun grounded(token: String): Boolean {
             val t = compact(token)
             if (t.isBlank()) return false
             if (token == c.drug && s.chatMemories.filterIsInstance<ChatMemory.Alias>().any { compact(it.name) == t })
                 return inputs.any { ChatMemoryNames.mentioned(it, token) }
-            val before = if (t.first().isDigit()) "(?<![0-9.])" else if (t.first() in 'a'..'z') "(?<![a-z])" else ""
-            val after = if (token == c.time) "(?!\\s*(?:[0-9]+분|반))" else if (t.last().isDigit()) "(?![0-9.])" else if (t.last() in 'a'..'z') "(?![a-z])" else ""
-            val pattern = token.trim().lowercase().split(Regex("\\s+")).joinToString("\\s*") { Regex.escape(it) }
-            return inputs.any { Regex(before + pattern + after).containsMatchIn(it.lowercase()) }
+            return inputs.any { mentions(it, token, token == c.time) }
         }
         val implicitToday = compact(c.time) in setOf("방금", "지금") && compact(c.date) == "오늘" &&
             !Regex("어제|그제|내일|\\d{4}-\\d{2}-\\d{2}").containsMatchIn(text)
@@ -112,6 +114,11 @@ object ChatCommands {
             else -> "시각을 확인해 주세요. 예: 어제 오후 3시, 오늘 15:30. ‘방금’은 지금 시각으로 기록해요."
         }
         if (c.action == "dose") {
+            if (c.date.isBlank() && Regex("내일|모레|글피|\\d+월|\\d+일|요일|\\d{4}년").containsMatchIn(text)) return ask("날짜를 확인하지 못했어요. 날짜를 ‘2026-10-24’처럼 알려주세요.")
+            if (needsOwnClause(s, c, inputs) && !boundInOwnClause(c, inputs)) return ask("용량과 시각이 어느 약의 것인지 원문에서 확인하지 못했어요. 약별로 나누어 다시 알려주세요.")
+            val day = c.date.takeIf { it.isNotBlank() }?.let { KoreanTime.day(it, now, zone) ?: return ask("날짜를 확인하지 못했어요. 날짜를 ‘2026-10-24’처럼 알려주세요.") }
+            if (day != null && day.yearless && inputs.drop(inputs.indexOfLast { compact(it).contains(compact(c.date)) } + 1).none { KoreanTime.isAffirmation(it) })
+                return ask("${day.date.year}년 ${day.date.monthValue}월 ${day.date.dayOfMonth}일로 기록할까요? 맞으면 ‘네’라고 답해 주세요.")
             val drugAlias = knownDrug(s, c.drug)
             val parsedDrug = drugAlias?.drug
             val parsedRoute = routes[compact(c.route)]
@@ -144,7 +151,7 @@ object ChatCommands {
                 else plan?.amountEntered?.takeIf { plan.enteredUnit == DoseUnit.MG }
             if (amount == null || !amount.isFinite() || amount <= 0 || amount > DOSE_MAX) return ask("0보다 크고 500 이하인 mg 용량을 알려주세요. mL를 mg으로 추측 변환하지 않아요.")
             if (route !in drug.allowedRoutes) return ask("이 약물과 투여 경로가 맞지 않아요. 제품과 경로를 확인해 주세요.")
-            if (at == null) return ask(timeQuestion())
+            if (at == null) return ask(if (day != null && KoreanTime.moment(c.time, now) == KoreanTime.Moment.Ambiguous) "오전인지 오후인지 알려주세요. 예: ‘오전 10시’." else timeQuestion())
             if (at.isAfter(now.plusSeconds(60))) return ask("아직 오지 않은 시각이에요. 실제 투약한 시각을 확인해 주세요.")
             val p4 = P4Context(
                 drugAlias?.product?.takeIf { it != P4Product.UNKNOWN } ?: if (text.contains("유트로게스탄")) P4Product.UTROGESTAN_SOFT_CAPSULE else plan?.p4Context?.product ?: P4Product.UNKNOWN,
@@ -190,22 +197,36 @@ object ChatCommands {
         return ChatDecision("${at?.let { format(it, zone) } ?: "채혈 시각 모름"} · " + c.labs.joinToString(" · ") { "${it.analyte} ${it.value} ${it.unit}" }, next)
     }
 
-    private fun resolveTime(date: String, time: String, now: Instant, zone: ZoneId): Instant? = runCatching {
-        val d = compact(date); val t = compact(time)
-        if (t in setOf("지금", "방금") && d in setOf("", "오늘")) return now
-        val day = when (d) { "오늘" -> now.atZone(zone).toLocalDate(); "어제" -> now.atZone(zone).toLocalDate().minusDays(1); "그제" -> now.atZone(zone).toLocalDate().minusDays(2); else -> LocalDate.parse(d) }
-        val clock = if (Regex("\\d{1,2}:\\d{2}").matches(t)) LocalTime.parse(t.padStart(5, '0')) else {
-            val m = Regex("(오전|오후|아침|저녁|밤)(\\d{1,2})시(?:(\\d{1,2})분|(반))?").matchEntire(t) ?: return null
-            val hour = m.groupValues[2].toInt().takeIf { it in 1..12 } ?: return null
-            val period = m.groupValues[1]
-            if (period == "밤" && hour in 1..5) return null
-            LocalTime.of(hour % 12 + if (period in setOf("오후", "저녁") || period == "밤" && hour != 12) 12 else 0,
-                if (m.groupValues[4].isNotBlank()) 30 else m.groupValues[3].ifBlank { "0" }.toInt())
+    private fun mentions(text: String, token: String, isTime: Boolean): Boolean {
+        val t = compact(token)
+        if (t.isBlank()) return false
+        val before = if (t.first().isDigit()) "(?<![0-9.])" else if (t.first() in 'a'..'z') "(?<![a-z])" else ""
+        val after = if (isTime) "(?!\\s*(?:[0-9]+분|반))" else if (t.last().isDigit()) "(?![0-9.])" else if (t.last() in 'a'..'z') "(?![a-z])" else ""
+        val pattern = token.trim().lowercase().split(Regex("\\s+")).joinToString("\\s*") { Regex.escape(it) }
+        return Regex(before + pattern + after).containsMatchIn(text.lowercase())
+    }
+    private fun clauses(inputs: List<String>) = inputs.flatMap { it.split(Regex("[,;\n]|그리고|및|와|과")) }.filter { it.isNotBlank() }
+    private fun needsOwnClause(s: AppState, c: ChatCommand, inputs: List<String>): Boolean {
+        val text = compact(inputs.joinToString("\n"))
+        return drugNames(s).distinct().count { text.contains(compact(it)) } > 1 ||
+            clauses(inputs).count { compact(it).contains(compact(c.drug)) } > 1
+    }
+    private fun boundInOwnClause(c: ChatCommand, inputs: List<String>): Boolean =
+        clauses(inputs).filter { compact(it).contains(compact(c.drug)) }.any { clause ->
+            listOf(c.amount to false, c.time to true, c.route to false).filter { it.first.isNotBlank() }
+                .all { (token, isTime) -> mentions(clause, token, isTime) }
         }
-        val local = day.atTime(clock)
-        if (zone.rules.getValidOffsets(local).size != 1) return null
-        local.atZone(zone).toInstant()
-    }.getOrNull()
+
+    private fun resolveTime(date: String, time: String, now: Instant, zone: ZoneId): Instant? {
+        val moment = KoreanTime.moment(time, now) ?: return null
+        val day = if (date.isBlank()) null else KoreanTime.day(date, now, zone)?.date ?: return null
+        val local = when (moment) {
+            is KoreanTime.Moment.Elapsed -> return moment.instant.takeIf { day == null || it.atZone(zone).toLocalDate() == day }
+            is KoreanTime.Moment.At -> day?.atTime(moment.time) ?: return null
+            KoreanTime.Moment.Ambiguous -> return null
+        }
+        return local.takeIf { zone.rules.getValidOffsets(it).size == 1 }?.atZone(zone)?.toInstant()
+    }
 
     private fun format(at: Instant, zone: ZoneId) = at.atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
     private fun recent(s: AppState, zone: ZoneId): String {

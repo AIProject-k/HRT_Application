@@ -42,10 +42,10 @@ class LocalChatController(private val app: Application, private val scope: Corou
         task=scope.launch {
             val result=try {
                 val text=withContext(dispatcher) { engine.generate(prompt) { current!=id || closed } }
-                val command=LlmResponseParser.parse(text)
+                val command=try { LlmResponseParser.parse(text) } catch(e: Exception) { throw LocalAiException(LocalAiStage.RESPONSE, e) }
                 Result.success(JSONObject().put("structured_output",ChatProtocol.commandJson(command)).toString())
             } catch(e: CancellationException) { return@launch }
-            catch(t: Throwable) { Result.failure(IllegalStateException("기기 내 AI 처리에 실패했어요. 기록은 저장하지 않았어요. 모델 상태와 입력 길이를 확인해 주세요.",t)) }
+            catch(t: Throwable) { Result.failure(if(t is LocalAiException) t else IllegalStateException("기기 내 AI 처리에 실패했어요. 기록은 저장하지 않았어요. 모델 상태와 입력 길이를 확인해 주세요.",t)) }
             if(current==id) { current=null; timeout?.cancel(); done(result) }
         }
         timeout=scope.launch {

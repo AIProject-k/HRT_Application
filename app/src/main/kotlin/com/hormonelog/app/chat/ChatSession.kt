@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hormonelog.app.state.AppState
+import com.hormonelog.app.state.JournalOps
 import com.hormonelog.app.state.RecordsReducer
 import com.hormonelog.app.state.UndoSnapshot
 import com.hormonelog.core.data.RecordSnapshot
@@ -28,6 +29,7 @@ class ChatSession(
     private val clock: () -> Instant = Instant::now,
     private val conversationStore: ChatConversationStore? = null,
     private val allowOfflineInput: Boolean = false,
+    private val zoneOf: () -> ZoneId = { ZoneId.systemDefault() },
 ) {
     var ui by mutableStateOf(ChatUi())
         private set
@@ -95,7 +97,7 @@ class ChatSession(
     fun showLabs() = showLocal("lab_results")
     private fun showLocal(action: String) {
         if (ui.busy || ui.saveFailed) return
-        say(ChatCommands.apply(state(), ChatCommand(action), emptyList(), UUID.randomUUID(), clock(), ZoneId.systemDefault()).message)
+        say(ChatCommands.apply(state(), ChatCommand(action), emptyList(), UUID.randomUUID(), clock(), zoneOf()).message)
     }
     fun listMemories() {
         if (ui.busy || ui.saveFailed) return
@@ -130,9 +132,12 @@ class ChatSession(
             say("한 번에 8,000자 이하로 입력해 주세요. 밀린 기록은 투약 50건까지 함께 보낼 수 있어요."); return
         }
         val now = clock()
-        val zone = ZoneId.systemDefault()
+        val zone = zoneOf()
         if (anchor != null && anchor!!.atZone(zone).toLocalDate() != now.atZone(zone).toLocalDate()) {
             finishTurns("날짜가 바뀌어 이전 미완료 요청은 종료했어요. 새 입력의 날짜·시각을 기준으로 확인해 주세요.")
+        }
+        pendingCommand?.takeIf { ChatCommands.switchesDrug(state(), it, text) }?.let {
+            finishTurns("이전 미완료 요청은 종료했어요. 새 약 기록으로 확인해 주세요.", includeTurns = false)
         }
         if (anchor == null) { anchor = now; inputTimes = emptyList() }
         if (ChatDoseReference.requested(text)) referenceActive = true
@@ -161,7 +166,7 @@ class ChatSession(
                     val before = state()
                     val reference = referenceDose?.takeIf { ChatDoseReference.find(before, lastDoseId, lastDoseRevision) == it }
                     val command = if (decoded.action == "dose" && reference != null) ChatDoseReference.apply(decoded, reference) else decoded
-                    val inputs = turns.filter { it.first }.map { it.second } + if (decoded.action == "dose" && reference != null) listOf(ChatDoseReference.evidence(reference)) else emptyList()
+                    val inputs = KoreanTime.normalizeInputs(turns.filter { it.first }.map { it.second }) + if (decoded.action == "dose" && reference != null) listOf(ChatDoseReference.evidence(reference)) else emptyList()
                     val timeToken = command.time.ifBlank { command.doses.map { it.time }.filter { it.isNotBlank() }.distinct().singleOrNull().orEmpty() }.filterNot { it.isWhitespace() }
                     val timeIndex = inputs.indexOfLast { timeToken.isNotBlank() && it.filterNot { c -> c.isWhitespace() }.contains(timeToken) }
                     val referenceTime = inputTimes.getOrNull(timeIndex) ?: now
@@ -175,6 +180,7 @@ class ChatSession(
                             turns = turns.dropLast(1); inputTimes = inputTimes.dropLast(1)
                             if (turns.isEmpty()) anchor = null
                         }
+                        else if (decision.closes) finishTurns(decision.message, includeTurns = false)
                         else {
                             if (command.action != "ask") pendingCommand = decoded
                             turns = turns + (false to decision.message)
@@ -216,6 +222,17 @@ class ChatSession(
         if (ui.busy || !ui.saveFailed || awaitingSave == null) return
         ui = ui.copy(busy = true, saving = true)
         save(state(), ::saved)
+    }
+
+    fun saveMemo() {
+        val text = ui.input.trim()
+        if (text.isEmpty() || ui.busy || ui.saveFailed) return
+        ui = ui.copy(busy = true, saving = true)
+        save(JournalOps.addNote(state(), text, clock(), zoneOf())) { ok ->
+            ui = ui.copy(busy = false, saving = false)
+            if (ok) { ui = ui.copy(input = ""); say("메모로 저장했어요. 타임라인에서 볼 수 있어요.") }
+            else say("메모를 저장하지 못했어요. 입력한 내용은 그대로 남겨 두었어요.")
+        }
     }
 
     fun undo() {

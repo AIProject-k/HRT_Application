@@ -231,7 +231,7 @@ data class JournalDraft(
     /** Non-null while an existing entry is being changed. */
     val editingId: UUID? = null,
     val tab: RecordTab = RecordTab.CONDITION,
-    val score: Int = 3,
+    val score: Int? = null,
     val symptoms: Set<Symptom> = emptySet(),
     val note: String = "",
     val weight: String = "",
@@ -252,7 +252,7 @@ data class JournalDraft(
 
     val canSave: Boolean
         get() = when (tab) {
-            RecordTab.CONDITION -> true
+            RecordTab.CONDITION -> score != null || symptoms.isNotEmpty() || note.isNotBlank()
             RecordTab.BODY -> (number(weight) != null || (systolic.isNotBlank() && diastolic.isNotBlank())) && weightError == null && pressureError == null
             RecordTab.LABS -> labs.values.any { number(it) != null } && labs.values.all { it.isBlank() || number(it) != null }
             RecordTab.STOCK -> false

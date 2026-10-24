@@ -118,7 +118,7 @@ class JournalOpsTest {
 
     @Test
     fun deletingAnEntryCanBeUndone() {
-        val saved = JournalOps.save(open(RecordTab.CONDITION), now, SEOUL)
+        val saved = JournalOps.save(JournalOps.draft(open(RecordTab.CONDITION)) { it.copy(score = 3) }, now, SEOUL)
         val id = saved.journal.single().id
         val gone = JournalOps.delete(saved, id)
         assertEquals(0, gone.journal.size)
