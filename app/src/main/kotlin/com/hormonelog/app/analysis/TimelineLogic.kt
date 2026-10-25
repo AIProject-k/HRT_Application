@@ -195,7 +195,7 @@ object TimelineLogic {
 
     private fun journalRows(journal: List<JournalEntry>, fmt: Fmt): List<TimelineRow> = journal.map { j ->
         val (kind, title, sub) = when (j.kind) {
-            JournalEntry.Kind.CONDITION -> Triple(
+            JournalEntry.Kind.CONDITION -> if (j.condition == null && j.symptoms.isEmpty()) Triple(RowKind.MEMO, "메모", j.note.orEmpty()) else Triple(
                 RowKind.CONDITION, "컨디션 ${j.condition ?: "-"}/5",
                 (j.symptoms.sortedBy { it.ordinal }.map { it.label } + listOfNotNull(j.note)).joinToString(" · "),
             )

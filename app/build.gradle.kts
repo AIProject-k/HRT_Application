@@ -58,6 +58,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    sourceSets {
+        getByName("test") { kotlin.srcDir("src/sharedTest/kotlin") }
+        getByName("androidTest") { kotlin.srcDir("src/sharedTest/kotlin") }
+    }
 }
 kotlin {
     jvmToolchain(17)

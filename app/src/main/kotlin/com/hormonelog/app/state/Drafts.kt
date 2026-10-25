@@ -239,6 +239,10 @@ data class JournalDraft(
     val diastolic: String = "",
     val labs: Map<ExtraLab, String> = emptyMap(),
 ) {
+    companion object {
+        const val NOTE_LIMIT = 8000
+    }
+
     private fun number(text: String): Double? = text.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
 
     val weightError: String? get() = if (weight.isBlank() || number(weight) != null) null else "올바른 숫자를 입력해 주세요"
@@ -250,9 +254,13 @@ data class JournalDraft(
             return if (s == null || d == null || s !in 50..300 || d !in 30..200 || d >= s) "수축기·이완기를 모두 올바르게 입력해 주세요" else null
         }
 
+    /** Longer notes are refused and shown, never cut. */
+    val noteError: String?
+        get() = if (note.length > NOTE_LIMIT) "메모는 ${NOTE_LIMIT}자까지 저장할 수 있어요. 지금 ${note.length}자예요." else null
+
     val canSave: Boolean
         get() = when (tab) {
-            RecordTab.CONDITION -> score != null || symptoms.isNotEmpty() || note.isNotBlank()
+            RecordTab.CONDITION -> noteError == null && (score != null || symptoms.isNotEmpty() || note.isNotBlank())
             RecordTab.BODY -> (number(weight) != null || (systolic.isNotBlank() && diastolic.isNotBlank())) && weightError == null && pressureError == null
             RecordTab.LABS -> labs.values.any { number(it) != null } && labs.values.all { it.isBlank() || number(it) != null }
             RecordTab.STOCK -> false

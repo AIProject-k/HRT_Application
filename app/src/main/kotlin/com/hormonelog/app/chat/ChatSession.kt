@@ -17,6 +17,7 @@ data class ChatUi(
     val connected: Boolean = false, val lines: List<ChatLine> = emptyList(),
     val busy: Boolean = false, val saving: Boolean = false, val saveFailed: Boolean = false,
     val canUndo: Boolean = false,
+    val pending: Boolean = false,
     val input: String = "", val conversationWarning: String? = null,
 )
 
@@ -38,7 +39,10 @@ class ChatSession(
     private var inFlight: UUID? = null
     private var anchor: Instant? = null
     private var inputTimes = emptyList<Instant>()
-    private data class Receipt(val before: UndoSnapshot, val after: RecordSnapshot, val text: String, val undoing: Boolean = false, val includeContext: Boolean = true)
+    private data class Receipt(val before: UndoSnapshot, val after: RecordSnapshot, val text: String, val undoing: Boolean = false, val includeContext: Boolean = true, val memoId: UUID? = null)
+    /** The first attempt of a memo save: the same entry and the state before it, reused by every retry. */
+    private data class MemoAttempt(val entry: com.hormonelog.core.domain.JournalEntry, val before: AppState)
+    private var memoAttempt: MemoAttempt? = null
     private var receipt: Receipt? = null
     private var receiptAt: Instant? = null
     private var awaitingSave: Receipt? = null
@@ -46,6 +50,10 @@ class ChatSession(
     private var lastDoseRevision = 0
     private var referenceActive = false
     private var pendingCommand: ChatCommand? = null
+
+    private companion object {
+        const val MAX_CHARS = 8000
+    }
 
     init {
         conversationStore?.load()?.let { saved ->
@@ -63,6 +71,7 @@ class ChatSession(
     }
 
     private fun checkpoint(draftOnly: Boolean = false) {
+        ui = ui.copy(pending = turns.isNotEmpty())
         val store = conversationStore ?: return
         try {
             val snapshot = ChatConversation(ui.lines, ui.input, turns, contextTurns, inputTimes, anchor,
@@ -74,10 +83,12 @@ class ChatSession(
             ui = ui.copy(conversationWarning = "대화를 기기에 저장하지 못했어요. 저장 공간을 확인해 주세요.")
         }
     }
-    fun editInput(value: String) { ui = ui.copy(input = value.take(8000)); checkpoint(draftOnly = true) }
+    /** The draft keeps whatever was typed; the length limit applies at submit and at save, never by cutting. */
+    fun editInput(value: String) { ui = ui.copy(input = value); checkpoint(draftOnly = true) }
     fun submit() {
         val text = ui.input
         if (!canSend(text)) return
+        if (text.length > MAX_CHARS) { say("한 번에 ${MAX_CHARS}자 이하로 입력해 주세요. 입력한 내용은 그대로 남겨 두었어요."); return }
         ui = ui.copy(input = "")
         send(text)
     }
@@ -110,6 +121,8 @@ class ChatSession(
         val oldIds = r.before.doses.map { it.id }.toSet()
         return r.after.doses.filter { it.id !in oldIds }.map { it.occurredAt }.distinct().singleOrNull()
     }
+    /** Puts an unsent message back in the input box so it survives a failure and can be saved as a memo. */
+    private fun restoreRaw(text: String) { if (ui.input.isBlank()) ui = ui.copy(input = text.trim()) }
     private fun say(text: String) { ui = ui.copy(lines = (ui.lines + ChatLine(false, text)).takeLast(200)); checkpoint() }
     private fun finishTurns(summary: String, includeTurns: Boolean = true) {
         contextTurns = (contextTurns + (if (includeTurns) turns else emptyList()) + (false to summary)).takeLast(20)
@@ -136,6 +149,10 @@ class ChatSession(
         if (anchor != null && anchor!!.atZone(zone).toLocalDate() != now.atZone(zone).toLocalDate()) {
             finishTurns("날짜가 바뀌어 이전 미완료 요청은 종료했어요. 새 입력의 날짜·시각을 기준으로 확인해 주세요.")
         }
+        val complete = RuleBasedParser.parse(ChatProtocol.request(listOf(true to text)), state())?.let { it.amount.isNotBlank() && it.time.isNotBlank() } == true
+        if (pendingCommand != null && complete) {
+            finishTurns("이전 미완료 요청은 종료했어요. 새 완전한 기록으로 확인해 주세요.", includeTurns = false)
+        }
         pendingCommand?.takeIf { ChatCommands.switchesDrug(state(), it, text) }?.let {
             finishTurns("이전 미완료 요청은 종료했어요. 새 약 기록으로 확인해 주세요.", includeTurns = false)
         }
@@ -161,15 +178,16 @@ class ChatSession(
                 ui = ui.copy(busy = false)
                 response.fold(onSuccess = { raw ->
                     val decoded = runCatching { ChatProtocol.decode(raw) }.getOrElse {
-                        say("응답 형식을 확인하지 못했어요. 기록은 실행하지 않았어요. 다시 요청해 주세요."); return@callback
+                        restoreRaw(text); say("응답 형식을 확인하지 못했어요. 기록은 실행하지 않았어요. 다시 요청해 주세요."); return@callback
                     }
                     val before = state()
                     val reference = referenceDose?.takeIf { ChatDoseReference.find(before, lastDoseId, lastDoseRevision) == it }
                     val command = if (decoded.action == "dose" && reference != null) ChatDoseReference.apply(decoded, reference) else decoded
-                    val inputs = KoreanTime.normalizeInputs(turns.filter { it.first }.map { it.second }) + if (decoded.action == "dose" && reference != null) listOf(ChatDoseReference.evidence(reference)) else emptyList()
+                    val normalized = KoreanTime.normalizeWithOrigins(turns.filter { it.first }.map { it.second })
+                    val inputs = normalized.map { it.first } + if (decoded.action == "dose" && reference != null) listOf(ChatDoseReference.evidence(reference)) else emptyList()
                     val timeToken = command.time.ifBlank { command.doses.map { it.time }.filter { it.isNotBlank() }.distinct().singleOrNull().orEmpty() }.filterNot { it.isWhitespace() }
                     val timeIndex = inputs.indexOfLast { timeToken.isNotBlank() && it.filterNot { c -> c.isWhitespace() }.contains(timeToken) }
-                    val referenceTime = inputTimes.getOrNull(timeIndex) ?: now
+                    val referenceTime = normalized.getOrNull(timeIndex)?.second?.let(inputTimes::getOrNull) ?: now
                     val decision = if (command.action in ChatMemoryActions.actions) ChatMemoryActions.apply(before, command, inputs, id, referenceTime, zone)
                         else ChatCommands.apply(before, command, inputs, id, referenceTime, zone,
                             previousDoseAt = previous.takeIf { receipt?.after == before.snapshot })
@@ -180,7 +198,7 @@ class ChatSession(
                             turns = turns.dropLast(1); inputTimes = inputTimes.dropLast(1)
                             if (turns.isEmpty()) anchor = null
                         }
-                        else if (decision.closes) finishTurns(decision.message, includeTurns = false)
+                        else if (decision.closes) { restoreRaw(text); finishTurns(decision.message, includeTurns = false) }
                         else {
                             if (command.action != "ask") pendingCommand = decoded
                             turns = turns + (false to decision.message)
@@ -193,12 +211,12 @@ class ChatSession(
                         checkpoint()
                         save(next, ::saved)
                     }
-                }, onFailure = { say(it.message ?: "연결에 실패했어요. 기록은 실행하지 않았어요.") })
+                }, onFailure = { restoreRaw(text); say(it.message ?: "연결에 실패했어요. 기록은 실행하지 않았어요.") })
             }
         } catch (e: Exception) {
             inFlight = null
             ui = ui.copy(busy = false)
-            say(e.message ?: "연결 설정을 확인해 주세요.")
+            restoreRaw(text); say(e.message ?: "연결 설정을 확인해 주세요.")
         }
     }
 
@@ -220,24 +238,67 @@ class ChatSession(
 
     fun retrySave() {
         if (ui.busy || !ui.saveFailed || awaitingSave == null) return
+        val attempt = memoAttempt
+        if (attempt != null) return startMemoSave(attempt)
         ui = ui.copy(busy = true, saving = true)
         save(state(), ::saved)
     }
 
+    /** Saves the composer text as a note. A failed attempt is retried as the same entry; a new attempt starts only after a success or an explicit new text. */
     fun saveMemo() {
+        if (memoAttempt != null && ui.saveFailed) return retrySave()
         val text = ui.input.trim()
         if (text.isEmpty() || ui.busy || ui.saveFailed) return
-        ui = ui.copy(busy = true, saving = true)
-        save(JournalOps.addNote(state(), text, clock(), zoneOf())) { ok ->
+        if (text.length > MAX_CHARS) { say("메모는 ${MAX_CHARS}자까지 저장할 수 있어요. 나누어 저장하거나 줄여 주세요. 입력한 내용은 그대로 남겨 두었어요."); return }
+        val before = state()
+        val attempt = MemoAttempt(com.hormonelog.core.domain.JournalEntry(id = UUID.randomUUID(), at = clock(), sourceZoneId = zoneOf().id, note = text), before)
+        memoAttempt = attempt
+        startMemoSave(attempt)
+    }
+
+    private fun startMemoSave(attempt: MemoAttempt) {
+        val next = JournalOps.addNote(state(), attempt.entry)
+        awaitingSave = Receipt(RecordsReducer.undoPoint(attempt.before), next.snapshot, attempt.entry.note.orEmpty(), memoId = attempt.entry.id)
+        ui = ui.copy(busy = true, saving = true, canUndo = false)
+        save(next) { ok -> memoSaved(attempt.entry.id, ok) }
+    }
+
+    private fun memoSaved(id: UUID, ok: Boolean) {
+        val pending = awaitingSave?.takeIf { it.memoId == id } ?: return
+        ui = ui.copy(busy = false, saving = false)
+        if (!ok) {
+            ui = ui.copy(saveFailed = true)
+            say("메모를 저장하지 못했어요. 입력한 내용은 그대로 남겨 두었어요. ‘저장 재시도’를 눌러 주세요.")
+            return
+        }
+        awaitingSave = null
+        memoAttempt = null
+        receipt = pending
+        receiptAt = clock()
+        ui = ui.copy(saveFailed = false, canUndo = state().snapshot == pending.after)
+        if (ui.input.trim() == pending.text) ui = ui.copy(input = "")
+        say("메모로 저장했어요. 타임라인에서 볼 수 있어요.")
+    }
+
+    private fun undoMemo(r: Receipt) {
+        if (state().snapshot != r.after) {
+            ui = ui.copy(canUndo = false)
+            say("이후 기록이 바뀌어 여기서 되돌릴 수 없어요. 타임라인에서 해당 메모를 확인해 주세요.")
+            return
+        }
+        val next = RecordsReducer.undo(state().copy(undo = r.before)).copy(toast = null)
+        ui = ui.copy(busy = true, saving = true, canUndo = false)
+        save(next) { ok ->
             ui = ui.copy(busy = false, saving = false)
-            if (ok) { ui = ui.copy(input = ""); say("메모로 저장했어요. 타임라인에서 볼 수 있어요.") }
-            else say("메모를 저장하지 못했어요. 입력한 내용은 그대로 남겨 두었어요.")
+            if (ok) { receipt = null; say("메모 저장을 되돌렸어요.") }
+            else { receipt = r; ui = ui.copy(canUndo = true); say("되돌리지 못했어요. 다시 되돌리기를 눌러 주세요.") }
         }
     }
 
     fun undo() {
         val r = receipt ?: return
         if (ui.busy || ui.saveFailed) return
+        if (r.memoId != null) return undoMemo(r)
         if (state().snapshot != r.after) {
             ui = ui.copy(canUndo = false)
             say("이후 기록이 바뀌어 여기서 되돌릴 수 없어요. 타임라인에서 해당 기록을 확인해 주세요.")
@@ -267,6 +328,7 @@ class ChatSession(
     }
     fun eraseHistory() {
         awaitingSave = null
+        memoAttempt = null
         ui = ui.copy(saving = false, saveFailed = false)
         reset()
     }

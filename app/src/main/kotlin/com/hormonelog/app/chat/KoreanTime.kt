@@ -17,7 +17,6 @@ internal object KoreanTime {
 
     private val affirmations = setOf("네", "예", "응", "맞아", "맞아요", "맞습니다", "그래", "그래요", "좋아", "좋아요")
     private val relativeDays = mapOf("오늘" to 0L, "어제" to -1L, "그제" to -2L, "그저께" to -2L, "엊그제" to -2L, "내일" to 1L, "모레" to 2L)
-    private val units = setOf("mg", "밀리그램", "밀리그람")
 
     fun isAffirmation(line: String) = compact(line) in affirmations
 
@@ -58,27 +57,55 @@ internal object KoreanTime {
         }
     }
 
-    /** Normalizes unit words, then joins short answers: a bare “오전”/“오후” line completes the hour above it, a bare unit line completes the number above it. */
-    fun normalizeInputs(inputs: List<String>): List<String> {
-        val lines = mutableListOf<String>()
-        for (raw in inputs) {
+    /** Normalizes unit words and joins short answers into the earlier line whose field they complete. */
+    fun normalizeInputs(inputs: List<String>): List<String> = normalizeWithOrigins(inputs).map { it.first }
+
+    /** Same as [normalizeInputs], and each line carries the index of the input it came from. */
+    fun normalizeWithOrigins(inputs: List<String>): List<Pair<String, Int>> {
+        val lines = mutableListOf<Pair<String, Int>>()
+        inputs.forEachIndexed { index, raw ->
             val line = raw.trim().replace(Regex("밀리그[램람]"), "mg")
-            val last = lines.lastOrNull()
-            val hourEnd = Regex("(\\d{1,2}시(?:\\s*\\d{1,2}분|\\s*반)?)\\s*$")
-            when {
-                last != null && (line == "오전" || line == "오후") && hourEnd.containsMatchIn(last) ->
-                    lines[lines.lastIndex] = hourEnd.replace(last, "$line $1")
-                last != null && line.lowercase() in units && Regex("\\d").containsMatchIn(last) ->
-                    lines[lines.lastIndex] = attachUnit(last)
-                else -> lines += line
+            val period = Regex("^(오전|오후)$").matchEntire(line)?.groupValues?.get(1)
+            val periodHour = Regex("^(오전|오후)\\s*(\\d{1,2})시(?:\\s*\\d{1,2}분|\\s*반)?$").matchEntire(line)
+            val target = when {
+                period != null -> lastBareHour(lines, null)
+                periodHour != null -> lastBareHour(lines, periodHour.groupValues[2])
+                line.lowercase() == "mg" -> lines.indices.reversed().firstOrNull { i -> !isAffirmation(lines[i].first) && amountCandidate.containsMatchIn(lines[i].first) }
+                else -> null
             }
+            if (target == null) {
+                lines += line to index
+                return@forEachIndexed
+            }
+            val (text, _) = lines[target]
+            val merged = when {
+                period != null -> replaceBareHour(text, "$period ${bareHours(text).first().value}")
+                periodHour != null -> replaceBareHour(text, line, periodHour.groupValues[2])
+                else -> amountCandidate.replaceFirst(text, "$1mg")
+            }
+            lines[target] = merged to lines[target].second
         }
         return lines
     }
 
-    private fun attachUnit(line: String) = line.replaceFirst(
-        Regex("(?<![0-9.])(\\d+(?:\\.\\d+)?)(?![0-9.]|\\s*(?:mg|밀리그램|밀리그람|mL|정|알|시|분|반|일|월|년|%))"), "$1mg",
-    )
+    private val periodWords = listOf("오전", "오후", "아침", "저녁", "밤", "새벽", "낮")
+    private val amountCandidate = Regex("(?<![0-9.:/\\-])(\\d+(?:\\.\\d+)?)(?![0-9.:/\\-]|\\s*(?:mg|밀리그램|밀리그람|mL|정|알|시|분|반|일|월|년|%))")
+
+    /** Hour tokens written without an 오전/오후/아침/저녁/밤 word in front of them. */
+    private fun bareHours(line: String): List<MatchResult> =
+        Regex("(\\d{1,2})시(?:\\s*\\d{1,2}분|\\s*반)?").findAll(line).filter { m ->
+            periodWords.none { line.substring(0, m.range.first).trimEnd().endsWith(it) }
+        }.toList()
+
+    private fun lastBareHour(lines: List<Pair<String, Int>>, hour: String?): Int? =
+        lines.indices.reversed().firstOrNull { i ->
+            !isAffirmation(lines[i].first) && bareHours(lines[i].first).any { hour == null || it.groupValues[1] == hour }
+        }
+
+    private fun replaceBareHour(text: String, replacement: String, hour: String? = null): String {
+        val match = bareHours(text).first { hour == null || it.groupValues[1] == hour }
+        return text.replaceRange(match.range, replacement)
+    }
 
     private fun date(year: Int, month: Int, day: Int, yearless: Boolean): Day? =
         runCatching { Day(LocalDate.of(year, month, day), yearless) }.getOrNull()

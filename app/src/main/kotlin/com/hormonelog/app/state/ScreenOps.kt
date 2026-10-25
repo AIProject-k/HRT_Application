@@ -149,9 +149,9 @@ object JournalOps {
         return Nav.back(saved).copy(toast = saved.toast, undo = saved.undo)
     }
 
-    /** A note written in chat: no score, no symptoms, stamped with the time it was written. */
-    fun addNote(s: AppState, text: String, now: Instant, zone: ZoneId): AppState {
-        val entry = JournalEntry(id = UUID.randomUUID(), at = now, sourceZoneId = zone.id, note = text)
+    /** A note written in chat: no score, no symptoms. Adding the same entry twice leaves the state unchanged, so a retry cannot duplicate it. */
+    fun addNote(s: AppState, entry: JournalEntry): AppState {
+        if (s.journal.any { it.id == entry.id }) return s
         return s.copy(journal = (s.journal + entry).sortedBy { it.at }, undo = RecordsReducer.undoPoint(s), toast = "메모를 저장했어요")
     }
 

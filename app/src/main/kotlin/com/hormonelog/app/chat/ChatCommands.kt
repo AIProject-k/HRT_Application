@@ -7,6 +7,7 @@ import com.hormonelog.core.domain.*
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
+import kotlin.math.abs
 
 data class ChatLabInput(val analyte: String, val value: String, val unit: String)
 data class ChatCommand(
@@ -58,22 +59,33 @@ object ChatCommands {
         return mentioned.isNotEmpty() && before !in mentioned
     }
 
-    fun apply(s: AppState, c: ChatCommand, inputs: List<String>, id: UUID, now: Instant, zone: ZoneId, previousDoseAt: Instant? = null, mode: ChatInputMode = ChatInputMode.RECORD): ChatDecision {
+    fun apply(s: AppState, c: ChatCommand, inputs: List<String>, id: UUID, now: Instant, zone: ZoneId, previousDoseAt: Instant? = null, mode: ChatInputMode = ChatInputMode.RECORD, inheritedTime: Boolean = false, forceDuplicate: Boolean = false): ChatDecision {
         fun ask(message: String) = ChatDecision(message)
         fun refuse(message: String) = ChatDecision(message, closes = true)
+        if (c.action == "refuse") return refuse(c.reply.ifBlank { "실제로 투약하거나 검사한 내용만 기록할 수 있어요." })
         if (mode == ChatInputMode.RECORD && c.action in setOf("dose", "batch", "lab") && inputs.any { Regex("기억해|기억하|외워|단축어로|별명으로").containsMatchIn(it) })
             return ask("기억 요청은 단축어로 저장해야 해요. 실제 투약으로 등록하지 않았어요.")
+        if (mode == ChatInputMode.RECORD && c.action in setOf("dose", "batch") && inputs.any { Regex("메모해줘|메모 해줘|메모 남|메모해 ").containsMatchIn(it) })
+            return refuse("투약·검사 기록이 아니어서 저장하지 않았어요. 원문을 메모로 남기려면 ‘메모로 저장’을 눌러 주세요.")
         if (c.action == "batch") {
             if (c.doses.size !in 2..MAX_BATCH_DOSES) return ask("한 번에 투약 2~${MAX_BATCH_DOSES}건을 함께 기록할 수 있어요.")
+            // The same drug twice in one unseparated sentence cannot be bound with certainty: which time goes with which dose is a guess.
+            if (mode == ChatInputMode.RECORD && c.doses.groupBy { it.drug }.values.any { it.size > 1 } && inputs.none { it.contains(',') || it.contains('\n') || it.contains(';') })
+                return ask("같은 약을 쉼표나 줄바꿈 없이 여러 번 적었어요. 한 건씩 나누어 적어 주세요. 아직 저장하지 않았어요.")
             var next = s
             val messages = mutableListOf<String>()
             for ((index, item) in c.doses.withIndex()) {
                 val child = item.copy(action = "dose", date = item.date.ifBlank { c.date }, time = item.time.ifBlank { c.time }, doses = emptyList())
                 val childId = if (index == 0) id else UUID.nameUUIDFromBytes("$id:$index".toByteArray(Charsets.UTF_8))
-                val result = apply(next, child, inputs, childId, now, zone, previousDoseAt, mode)
+                // The window guards against a re-tap of a saved dose; items of this batch are checked below against the saved ones only.
+                val result = apply(next, child, inputs, childId, now, zone, previousDoseAt, mode, inheritedTime = item.time.isBlank(), forceDuplicate = true)
                 next = result.next ?: return ask("${item.drug.ifBlank { "투약 ${index + 1}" }}: ${result.message}\n아직 이 묶음은 저장하지 않았어요.")
                 messages += result.message
             }
+            val added = next.doses.filter { d -> s.doses.none { it.id == d.id } }
+            if (added.any { a -> s.doses.any { it.drug == a.drug && abs(it.occurredAt.epochSecond - a.occurredAt.epochSecond) < RecordsReducer.DUPLICATE_WINDOW_SECONDS } })
+                return ask("같은 약의 기존 기록과 가까운 시각이 있어요. 아직 이 묶음은 저장하지 않았어요.")
+            if (added.groupBy { it.drug to it.occurredAt }.any { it.value.size > 1 }) return ask("같은 약을 같은 시각에 두 번 넣었어요. 아직 이 묶음은 저장하지 않았어요.")
             return ChatDecision(messages.joinToString("\n"), next)
         }
         if (c.action == "recent") return ask(recent(s, zone))
@@ -85,10 +97,13 @@ object ChatCommands {
         val text = compact(inputs.joinToString("\n"))
         val additional = inputs.any { Regex("도(?:\\s*(?:기록해줘|등록해줘|추가해줘))?[.!?]?$|같은\\s*시간").containsMatchIn(it.trim()) }
         if ((mode == ChatInputMode.RECORD && !Regex("기록|등록|저장|추가|맞았|맞고|맞음|맞은|먹음|먹었|먹엇|먹은|먹고|복용").containsMatchIn(text) && !(additional && previousDoseAt != null)) ||
-            (mode != ChatInputMode.TEMPLATE &&
-            Regex("하지마|하지말|취소|안맞|안먹|먹지않|복용안|복용하지않|복용전|투약전|먹기전|맞기전|먹어도|복용해도|맞아도|예정|어떻게|예시|만약|못했|못먹|못맞|못함|않았|않음|안했|\\?").containsMatchIn(text))) {
+            (mode != ChatInputMode.TEMPLATE && ChatIntents.blocks(s, knownDrug(s, c.drug)?.drug, inputs))) {
             return refuse("실제로 투약하거나 검사한 내용을 등록할 때 ‘기록해줘’라고 말씀해 주세요.")
         }
+        if (mode != ChatInputMode.TEMPLATE && c.action == "dose" && ChatIntents.hasSymptom(inputs)) {
+            return refuse("증상이 함께 있어 투약은 저장하지 않았어요. 원문은 메모로 남길 수 있어요.")
+        }
+        if (mode != ChatInputMode.TEMPLATE && ChatIntents.repeated(inputs)) return refuse("같은 줄이 두 번 입력됐어요. 한 번만 보내 주세요.")
         fun grounded(token: String): Boolean {
             val t = compact(token)
             if (t.isBlank()) return false
@@ -115,7 +130,10 @@ object ChatCommands {
         }
         if (c.action == "dose") {
             if (c.date.isBlank() && Regex("내일|모레|글피|\\d+월|\\d+일|요일|\\d{4}년").containsMatchIn(text)) return ask("날짜를 확인하지 못했어요. 날짜를 ‘2026-10-24’처럼 알려주세요.")
-            if (needsOwnClause(s, c, inputs) && !boundInOwnClause(c, inputs)) return ask("용량과 시각이 어느 약의 것인지 원문에서 확인하지 못했어요. 약별로 나누어 다시 알려주세요.")
+            // Two amounts in the same message: which one is the dose is not certain. A batch item is checked on its own line instead.
+            if (mode == ChatInputMode.RECORD && !forceDuplicate && inputs.any { Regex("[0-9]+(?:\\.[0-9]+)?\\s*(?:mg|mL|정|알)", RegexOption.IGNORE_CASE).findAll(it).count() > 1 })
+                return ask("용량이 두 개 보여요. 어느 것이 맞는지 확인해 주세요. 아직 저장하지 않았어요.")
+            if (ChatBinding.violates(s, c, inputs, checkTime = !inheritedTime)) return ask("용량과 시각이 어느 약의 것인지 원문에서 확인하지 못했어요. 약별로 나누어 다시 알려주세요.")
             val day = c.date.takeIf { it.isNotBlank() }?.let { KoreanTime.day(it, now, zone) ?: return ask("날짜를 확인하지 못했어요. 날짜를 ‘2026-10-24’처럼 알려주세요.") }
             if (day != null && day.yearless && inputs.drop(inputs.indexOfLast { compact(it).contains(compact(c.date)) } + 1).none { KoreanTime.isAffirmation(it) })
                 return ask("${day.date.year}년 ${day.date.monthValue}월 ${day.date.dayOfMonth}일로 기록할까요? 맞으면 ‘네’라고 답해 주세요.")
@@ -158,7 +176,7 @@ object ChatCommands {
                 when { text.contains("고지방") -> P4Meal.HIGH_FAT_MEAL; text.contains("식후") -> P4Meal.AFTER_MEAL; text.contains("공복") -> P4Meal.FASTING; else -> P4Meal.UNKNOWN },
             )
             val draft = DoseDraft(drug = drug, route = route, amountText = plainNumber(amount), time = DoseTime.PICK, pickedMillis = at.toEpochMilli(), p4Context = p4)
-            val applied = RecordsReducer.saveDose(s.copy(doseDraft = draft, confirm = null), now, zone)
+            val applied = RecordsReducer.saveDose(s.copy(doseDraft = draft, confirm = null), now, zone, force = forceDuplicate)
             if (applied.doses.size != s.doses.size + 1) return ask("같은 약물의 가까운 시각 기록이 있거나 입력이 올바르지 않아요. 기존 기록을 확인해 주세요.")
             val new = applied.doses.first { e -> s.doses.none { it.id == e.id } }
             val next = applied.copy(doses = applied.doses.map { if (it.id == new.id) it.copy(id = id) else it },
@@ -205,17 +223,6 @@ object ChatCommands {
         val pattern = token.trim().lowercase().split(Regex("\\s+")).joinToString("\\s*") { Regex.escape(it) }
         return Regex(before + pattern + after).containsMatchIn(text.lowercase())
     }
-    private fun clauses(inputs: List<String>) = inputs.flatMap { it.split(Regex("[,;\n]|그리고|및|와|과")) }.filter { it.isNotBlank() }
-    private fun needsOwnClause(s: AppState, c: ChatCommand, inputs: List<String>): Boolean {
-        val text = compact(inputs.joinToString("\n"))
-        return drugNames(s).distinct().count { text.contains(compact(it)) } > 1 ||
-            clauses(inputs).count { compact(it).contains(compact(c.drug)) } > 1
-    }
-    private fun boundInOwnClause(c: ChatCommand, inputs: List<String>): Boolean =
-        clauses(inputs).filter { compact(it).contains(compact(c.drug)) }.any { clause ->
-            listOf(c.amount to false, c.time to true, c.route to false).filter { it.first.isNotBlank() }
-                .all { (token, isTime) -> mentions(clause, token, isTime) }
-        }
 
     private fun resolveTime(date: String, time: String, now: Instant, zone: ZoneId): Instant? {
         val moment = KoreanTime.moment(time, now) ?: return null

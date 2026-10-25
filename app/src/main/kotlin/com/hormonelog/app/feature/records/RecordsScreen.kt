@@ -146,7 +146,8 @@ private fun ConditionForm(d: JournalDraft, actions: RecordsActions) {
         }
     }
     Field("메모 · 선택") {
-        HlTextField(d.note, { v -> actions.draft { it.copy(note = v.take(500)) } }, label = "메모", placeholder = "오늘 느낀 점", keyboard = KeyboardType.Text, textSize = HlSize.t14, singleLine = false, minLines = 3, minHeight = 80.dp)
+        HlTextField(d.note, { v -> actions.draft { it.copy(note = v) } }, label = "메모", placeholder = "오늘 느낀 점", keyboard = KeyboardType.Text, textSize = HlSize.t14, singleLine = false, minLines = 3, minHeight = 80.dp)
+        HlText(d.noteError ?: "${d.note.length} / ${JournalDraft.NOTE_LIMIT}자", size = HlSize.t12, color = if (d.noteError != null) Hl.colors.danger else Hl.colors.muted)
     }
 }
 

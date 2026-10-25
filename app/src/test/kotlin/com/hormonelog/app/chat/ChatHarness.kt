@@ -19,9 +19,21 @@ internal class ChatHarness(
     var now: Instant = Instant.parse(start)
     var modelCalls = 0
         private set
+    /** Each save applies the next state first, as the app does, then reports failure for the next N saves. */
+    var failNextSaves = 0
+    /** What is on disk: only a save that reported success changes it. The in-memory [state] moves on before that. */
+    var disk = AppState()
+    /** When set, save callbacks are held in [deferred] until the test runs them, so late callbacks can be interleaved. */
+    var deferSaves = false
+    val deferred = mutableListOf<() -> Unit>()
     val chat = ChatSession(
         state = { state },
-        save = { next, done -> state = next; done(true) },
+        save = { next, done ->
+            state = next
+            val ok = if (failNextSaves > 0) { failNextSaves--; false } else true
+            if (ok) disk = next
+            if (deferSaves) deferred += { done(ok) } else done(ok)
+        },
         request = { _, payload, done -> route(payload, done) },
         cancelRequest = {},
         clock = { now },

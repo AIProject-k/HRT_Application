@@ -3,11 +3,24 @@ package com.hormonelog.app.ai
 import java.io.File
 import java.security.MessageDigest
 
-data class ModelSpec(val fileName: String, val url: String, val size: Long, val sha256: String) {
+/**
+ * One pinned .litertlm artifact. `label` is what the screen shows. Each entry is pinned to a HuggingFace commit and
+ * its SHA-256, so the bytes on the phone are the bytes that were checked here.
+ */
+data class ModelSpec(val fileName: String, val url: String, val size: Long, val sha256: String, val label: String = fileName) {
     companion object {
+        /** The built-in model. Stays the default; nothing replaces or deletes it. */
         val QWEN=ModelSpec("Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm",
             "https://huggingface.co/litert-community/Qwen3-0.6B/resolve/e6687177e00897731e7716267eebd4eba0dde7c2/Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm",
-            344671744L,"03e7da1eb1108b50dffaa9bb52cc7bcbad2eb0c66ca990267f480c1e545d2856")
+            344671744L,"03e7da1eb1108b50dffaa9bb52cc7bcbad2eb0c66ca990267f480c1e545d2856","Qwen3-0.6B · 기본 내장")
+        /** Optional, large. The repository metadata at this commit lists license apache-2.0. Chosen by the user, never automatically. */
+        val GEMMA=ModelSpec("gemma-4-E2B-it.litertlm",
+            "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/1caa527c1e88b55f046fcd8d2b4265606680663d/gemma-4-E2B-it.litertlm",
+            2588147712L,"181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c","Gemma 4 E2B · 선택 설치 (약 2.6 GB)")
+        val ALL = listOf(QWEN, GEMMA)
+
+        /** The spec the user picked, or the built-in model when nothing (or an unknown name) was picked. */
+        fun chosen(fileName: String?): ModelSpec = ALL.firstOrNull { it.fileName == fileName } ?: QWEN
     }
 }
 

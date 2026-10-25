@@ -1,6 +1,7 @@
 package com.hormonelog.app.ai
 
 import com.hormonelog.app.chat.*
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 
@@ -11,7 +12,11 @@ object LlmResponseParser {
         var text=raw.trim()
         if (text.startsWith("```json\n") && text.endsWith("\n```")) text=text.removePrefix("```json\n").removeSuffix("\n```")
         val tokener=JSONTokener(text)
-        val o=tokener.nextValue() as? JSONObject ?: error("JSON object required")
+        val o=when (val value=tokener.nextValue()) {
+            is JSONObject -> value
+            is JSONArray -> batchOf(value)
+            else -> error("JSON object required")
+        }
         require(tokener.nextClean() == '\u0000')
         val strings=setOf("action", "reply", "drug", "route", "amount", "amountUnit", "date", "time", "memoryName", "memoryTarget")
         fun validate(obj: JSONObject, child: Boolean=false) {
@@ -41,5 +46,14 @@ object LlmResponseParser {
             command.copy(date="",time=command.date) else command
     } catch (e: Exception) {
         throw IllegalArgumentException("AI 응답을 해석하지 못했어요. 기록은 저장하지 않았어요. 문장을 나누어 다시 보내주세요.",e)
+    }
+
+    /**
+     * Some models answer a multi-item sentence with a bare array of dose objects. That is the same batch the
+     * protocol defines; only the wrapping differs. Anything else in the array stays rejected by the validation below.
+     */
+    private fun batchOf(items: JSONArray): JSONObject {
+        require((0 until items.length()).all { items.get(it) is JSONObject && items.getJSONObject(it).optString("action", "dose") == "dose" })
+        return JSONObject().put("action", "batch").put("doses", items)
     }
 }

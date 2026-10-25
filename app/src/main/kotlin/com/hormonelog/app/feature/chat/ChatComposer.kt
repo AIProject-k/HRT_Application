@@ -1,6 +1,5 @@
 package com.hormonelog.app.feature.chat
 
-import android.text.InputFilter
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
@@ -40,7 +39,6 @@ internal fun ChatComposer(value: String, onValueChange: (String) -> Unit, modifi
                 hint = "무엇을 기록할까요?"
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                 imeOptions = EditorInfo.IME_ACTION_NONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
-                filters = arrayOf(InputFilter.LengthFilter(8000))
                 gravity = Gravity.TOP or Gravity.START
                 background = null
                 minLines = 1

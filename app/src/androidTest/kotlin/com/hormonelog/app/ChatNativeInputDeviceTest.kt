@@ -108,9 +108,10 @@ class ChatNativeInputDeviceTest {
                 assertEquals(5, BaseInputConnection.getComposingSpanEnd(input.text))
                 input.text.replace(0, input.length(), "첫째 줄\n둘째 줄")
                 assertEquals("첫째 줄\n둘째 줄", draft.value)
+                // Over the 8000-character limit the composer keeps the whole text; the send is refused instead of cutting it.
                 input.text.replace(0, input.length(), "가".repeat(8100))
-                assertEquals(8000, input.length())
-                assertEquals(8000, draft.value.length)
+                assertEquals(8100, input.length())
+                assertEquals(8100, draft.value.length)
             }
         }
     }

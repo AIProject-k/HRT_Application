@@ -54,7 +54,7 @@ class ChatConversationStore(private val file: File) {
             val active = turns("turns")
             val times = o.getJSONArray("times").let { a -> (0 until a.length()).map { Instant.parse(a.getString(it)) } }
             require(times.size == active.count { it.first })
-            ChatConversation(lines, o.getString("input").also { require(it.length <= 8000) }, active, turns("context"), times,
+            ChatConversation(lines, o.getString("input"), active, turns("context"), times,
                 o.optString("anchor").takeIf { it.isNotBlank() }?.let(Instant::parse),
                 o.optString("lastDoseId").takeIf { it.isNotBlank() }, o.optInt("lastDoseRevision"),
                 o.optBoolean("referenceActive"),

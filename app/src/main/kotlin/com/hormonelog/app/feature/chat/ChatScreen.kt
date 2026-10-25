@@ -47,7 +47,7 @@ fun ChatScreen(chat: ChatSession, back: () -> Unit, setup: com.hormonelog.app.ch
             contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item(key = "controls") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HlText("Qwen3-0.6B · 오프라인 기록 도우미", size = HlSize.t14)
+                    HlText("오프라인 기록 도우미 · ${setup?.spec?.label ?: "기본 내장 모델"}", size = HlSize.t14)
                     HlText("기본 조회·명확한 단일 투약은 AI 없이 처리해요. 복잡한 문장만 설치한 모델이 기기에서 해석해요. 대화·투약·검사 정보는 외부 AI 서버로 보내지 않아요. 최근 대화 200개와 작성 중인 입력은 기기에 보관해요.", size = HlSize.t12, color = c.muted)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         HlTextAction("단축어 목록 ${chat.memoryCount + ChatShortcut.entries.size}개", chat::listMemories)
@@ -75,6 +75,12 @@ fun ChatScreen(chat: ChatSession, back: () -> Unit, setup: com.hormonelog.app.ch
             if (ui.canUndo) HlButton("직전 채팅 등록 되돌리기", chat::undo, kind = HlButtonKind.Secondary, enabled = !ui.busy)
             if (ui.saveFailed) HlButton("저장 재시도", chat::retrySave, enabled = !ui.busy)
             if (ui.busy && !ui.saving) HlButton("응답 취소", chat::cancel, kind = HlButtonKind.Secondary)
+            if (ui.pending && !ui.busy) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("오전", "오후", "오늘", "어제").forEach { choice -> HlButton(choice, { chat.send(choice) }, kind = HlButtonKind.Secondary) }
+                    HlButton("이 요청 취소", chat::cancel, kind = HlButtonKind.Secondary)
+                }
+            }
             HlButton("메모로 저장", chat::saveMemo, kind = HlButtonKind.Secondary, enabled = !ui.busy && ui.input.isNotBlank())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
                 ChatComposer(ui.input, chat::editInput, Modifier.weight(1f))

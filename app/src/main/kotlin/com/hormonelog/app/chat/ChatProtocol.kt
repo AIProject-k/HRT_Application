@@ -17,7 +17,7 @@ object ChatProtocol {
         require(!envelope.optBoolean("is_error")) { "AI 요청 실패" }
         val o = envelope.optJSONObject("structured_output") ?: throw IllegalArgumentException("구조화된 응답이 없어요")
         val action = o.getString("action")
-        require(action in setOf("ask", "dose", "batch", "lab") || action in ChatCommands.readActions || action in ChatMemoryActions.actions)
+        require(action in setOf("ask", "refuse", "dose", "batch", "lab") || action in ChatCommands.readActions || action in ChatMemoryActions.actions)
         fun text(key: String) = o.optString(key, "").take(600)
         val labs = o.optJSONArray("labs") ?: JSONArray()
         require(labs.length() <= 3)

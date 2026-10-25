@@ -3,6 +3,21 @@ package com.hormonelog.core.data
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
+/** Writes the temp file and forces its bytes to the disk before the caller replaces the old file. */
+internal fun writeSynced(file: File, bytes: ByteArray) {
+    java.io.FileOutputStream(file).use { out ->
+        out.write(bytes)
+        out.fd.sync()
+    }
+}
+
+/** One rename inside the same folder. No copy fallback: if it fails, the old file stays exactly as it was. */
+internal fun replaceAtomically(from: File, to: File) {
+    Files.move(from.toPath(), to.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
 
 /**
  * Local persistence for records as one plain JSON file. No encryption, no SQL.
@@ -13,7 +28,11 @@ import java.io.IOException
  * this build does not understand is set aside on its own and written back on the next
  * save — it does not take the rest down with it.
  */
-class RecordStore(private val file: File) {
+class RecordStore(
+    private val file: File,
+    private val writeTemp: (File, ByteArray) -> Unit = ::writeSynced,
+    private val replace: (File, File) -> Unit = ::replaceAtomically,
+) {
 
     /** Outcome of a [load]; an unreadable file is distinct from having no records. */
     sealed interface Load {
@@ -54,12 +73,9 @@ class RecordStore(private val file: File) {
             // Everything that can fail is in here, so a failure is an IOException the caller reports.
             val bytes = RecordJson.toJson(snapshot).toString().toByteArray(Charsets.UTF_8)
             file.parentFile?.mkdirs()
-            tmp.writeBytes(bytes)
+            writeTemp(tmp, bytes)
             if (!tmp.readBytes().contentEquals(bytes)) throw IOException("저장한 파일을 다시 읽어 확인하지 못했어요")
-            if (!tmp.renameTo(file)) {
-                file.writeBytes(bytes)
-                tmp.delete()
-            }
+            replace(tmp, file)
         } catch (e: Exception) {
             tmp.delete()
             throw if (e is IOException) e else IOException(e.message, e)

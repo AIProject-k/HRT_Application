@@ -20,10 +20,28 @@ doses는 dose 항목 배열. labs는 {"analyte":"원문","value":"원문 숫자"
 출력: {"action":"remember_alias","memoryName":"내프로","memoryTarget":"유트로게스탄"}
 JSON만 출력한다. reply는 쓰지 않는다."""
 
+    /** Experiment candidate: one dose sentence per request, source words copied as written, no other action. */
+    const val SYSTEM_SHORT = """입력은 투약 기록 문장 한 건이다. 실제로 복용한 완료 진술이 아니면 action을 "none"으로 한다.
+drug, amount, amountUnit, date, time, route는 원문에 적힌 표현을 그대로 복사한다. 없으면 빈 문자열이다.
+날짜 계산, 단위 환산, 시각 추측은 하지 않는다. JSON 객체 하나만 출력한다."""
+
+    /** Second candidate: the same single-sentence task, with the exact seven keys listed so the reply keeps the action key. */
+    const val SYSTEM_SHORT_KEYS = """입력은 투약·검사 기록 문장 한 건이다. 결과는 JSON 객체 하나이며 키는 action, drug, amount, amountUnit, date, time, route 일곱 개만 쓴다.
+실제로 복용·투약한 완료 진술이면 action은 "dose", 아니면 "none"이다.
+drug, amount, amountUnit, date, time, route는 원문에 적힌 표현을 그대로 복사한다. 원문에 없는 값은 빈 문자열이다.
+날짜 계산, 단위 환산, 시각 추측, 예시 값 복사를 하지 않는다."""
+
+    /** Experiment candidate: the only keys the reply may use, with string values. */
+    const val JSON_SCHEMA = """{"type":"object","properties":{"action":{"type":"string"},"drug":{"type":"string"},"amount":{"type":"string"},"amountUnit":{"type":"string"},"date":{"type":"string"},"time":{"type":"string"},"route":{"type":"string"}},"required":["action"]}"""
+
+    /** Fewer lines per model call: a clear multi-line list is handled by the rules, and the model is kept to short inputs. */
+    const val MAX_MODEL_LINES = 5
+
     fun build(payload: String): String {
         val input=JSONObject(payload)
         val active=input.getJSONArray("messages")
         val userText=(0 until active.length()).map { active.getJSONObject(it) }.filter { it.optString("role")=="user" }.joinToString("\n") { it.getString("text") }
+        require(userText.lines().count { it.isNotBlank() } <= MAX_MODEL_LINES) { "모델에는 한 번에 ${MAX_MODEL_LINES}줄까지만 보낼 수 있어요. 한 줄씩 나눠 보내 주세요. 원문은 그대로 남겨 두었어요." }
         val compact=JSONObject().put("messages",active)
         input.optJSONObject("pendingRequest")?.let { compact.put("pendingRequest",it) }
         compact.put("previousDoseTimeAvailable",input.optBoolean("previousDoseTimeAvailable"))

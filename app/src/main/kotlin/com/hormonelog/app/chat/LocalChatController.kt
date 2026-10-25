@@ -12,13 +12,22 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
 
-/** Keeps existing ChatSession transactions; replaces the external provider and installer only. */
+/**
+ * Keeps existing ChatSession transactions; replaces the external provider and installer only.
+ * One model is active at a time: the built-in one unless the user chose another in the setup screen.
+ */
 class LocalChatController(private val app: Application, private val scope: CoroutineScope, private val state: ()->AppState) {
     private val worker=Executors.newSingleThreadExecutor()
     private val dispatcher=worker.asCoroutineDispatcher()
-    private val manager=ModelManager(File(app.noBackupFilesDir,"offline-ai"))
-    private val downloader=ModelDownloader(manager)
-    private val engine: LlmEngine=LiteRtLmEngine(manager,File(app.cacheDir,"offline-ai"))
+    private val root=File(app.noBackupFilesDir,"offline-ai")
+    private val cache=File(app.cacheDir,"offline-ai")
+    private val choiceFile=File(root,"selected-model.txt")
+    /** The model the user chose; the built-in one when nothing was chosen. Changed only by [select]. */
+    var spec: ModelSpec by mutableStateOf(ModelSpec.chosen(runCatching { choiceFile.readText().trim() }.getOrNull()))
+        private set
+    private var manager=ModelManager(root,spec)
+    private var downloader=ModelDownloader(manager)
+    private var engine: LlmEngine=LiteRtLmEngine(manager,cache)
     private var task: Job?=null
     private var timeout: Job?=null
     private var install: Job?=null
@@ -67,8 +76,23 @@ class LocalChatController(private val app: Application, private val scope: Corou
         install=scope.launch {
             val installed=withContext(Dispatchers.IO) { runCatching { manager.isInstalled() }.getOrDefault(false) }
             if(closed) return@launch
-            if(installed) { chat.connect(); ui=ui.copy(stage=ChatSetupStage.READY,message="Qwen3-0.6B · 기기 내 CPU 실행") }
+            if(installed) { chat.connect(); ui=ui.copy(stage=ChatSetupStage.READY,message="${spec.label} · 기기 내 CPU 실행") }
         }
+    }
+    /** Switches the active model. Nothing is downloaded or deleted here; the other model's files stay where they are. */
+    fun select(next: ModelSpec) {
+        if(ui.busy || chat.ui.busy || chat.ui.saveFailed || closed || current!=null || next==spec) return
+        chat.disconnect()
+        val old=engine
+        worker.execute { old.close() }
+        spec=next
+        manager=ModelManager(root,next)
+        downloader=ModelDownloader(manager)
+        engine=LiteRtLmEngine(manager,cache)
+        runCatching { root.mkdirs(); choiceFile.writeText(next.fileName) }
+        checked=false
+        ui=ui.copy(stage=ChatSetupStage.INTRO,busy=false,message="")
+        resume()
     }
     fun pause() {
         chat.suspendRequest()
@@ -83,7 +107,7 @@ class LocalChatController(private val app: Application, private val scope: Corou
             try {
                 withContext(Dispatchers.IO) {
                     if(!manager.isInstalled()) downloader.download { count -> scope.launch {
-                        if(ui.busy) ui=ui.copy(message="모델 다운로드 ${count/1024/1024} / 328 MiB")
+                        if(ui.busy) ui=ui.copy(message="모델 다운로드 ${count/1024/1024} / ${spec.size/1024/1024} MiB")
                     } }
                 }
                 chat.connect()
@@ -101,6 +125,7 @@ class LocalChatController(private val app: Application, private val scope: Corou
             ui=ui.copy(stage=ChatSetupStage.INTRO,busy=false,message="설치를 취소했어요. 다시 누르면 받은 부분부터 이어받아요.")
         } }
     }
+    /** Deletes only the model that is selected now; the other model and the records stay. */
     fun deleteModel() {
         if(ui.busy || chat.ui.busy || chat.ui.saveFailed) return
         ui=ui.copy(busy=true,message="AI 모델을 삭제하고 있어요…")
