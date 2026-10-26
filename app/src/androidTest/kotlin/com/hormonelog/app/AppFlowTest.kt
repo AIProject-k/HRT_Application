@@ -169,7 +169,7 @@ class AppFlowTest {
         // The disclaimer sits at the foot of the home screen; on a shorter display it is below the fold until scrolled to.
         compose.onNodeWithText("참고용 추정", substring = true).performScrollTo().assertIsDisplayed()
 
-        compose.onNodeWithText("바로 기록 · 1탭").performClick()
+        compose.onNodeWithText("바로 기록 · 1탭").performScrollTo().performClick()
         waitFor("를 기록했어요")
         compose.onNodeWithText("실행 취소").assertIsDisplayed()
         eventually("the quick log never reached the file", read = ::savedDoses, ok = { it == 3 })
@@ -185,7 +185,7 @@ class AppFlowTest {
         seed(usable, RecordSnapshot(doses = listOf(dose(daysAgo = 3))))
         launch()
         waitFor("바로 기록 · 1탭")
-        compose.onNodeWithText("바로 기록 · 1탭").performClick()
+        compose.onNodeWithText("바로 기록 · 1탭").performScrollTo().performClick()
         waitFor("를 기록했어요")
         eventually("the new dose never reached the file", read = ::savedDoses, ok = { it == 2 })
         scenario?.close()
