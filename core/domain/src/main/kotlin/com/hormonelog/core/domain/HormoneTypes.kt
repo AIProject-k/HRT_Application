@@ -38,6 +38,7 @@ enum class Drug {
     SPIRONOLACTONE,
     CYPROTERONE,
     PROGESTERONE_MICRONIZED,
+    MEDROXYPROGESTERONE_ACETATE,
 }
 
 /** Explicit membership: non-antiandrogens now also include progesterone. */
@@ -63,7 +64,7 @@ val Drug.allowedRoutes: List<Route>
         Drug.ESTRADIOL_TABLET -> listOf(Route.ORAL, Route.SUBLINGUAL)
         Drug.ESTRADIOL_PATCH -> listOf(Route.PATCH)
         Drug.ESTRADIOL_GEL -> listOf(Route.GEL)
-        Drug.SPIRONOLACTONE, Drug.CYPROTERONE, Drug.PROGESTERONE_MICRONIZED -> listOf(Route.ORAL)
+        Drug.SPIRONOLACTONE, Drug.CYPROTERONE, Drug.PROGESTERONE_MICRONIZED, Drug.MEDROXYPROGESTERONE_ACETATE -> listOf(Route.ORAL)
     }
 
 /** Units that make sense for a route; a patch is rated in µg released per day. */

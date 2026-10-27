@@ -33,6 +33,7 @@ val Drug.label: String
         Drug.SPIRONOLACTONE -> "스피로노락톤"
         Drug.CYPROTERONE -> "사이프로테론"
         Drug.PROGESTERONE_MICRONIZED -> "미분화 프로게스테론"
+        Drug.MEDROXYPROGESTERONE_ACETATE -> "메드록시프로게스테론"
     }
 
 val com.hormonelog.core.domain.P4Product.label: String
@@ -61,6 +62,7 @@ val Drug.shortLabel: String
         Drug.SPIRONOLACTONE -> "스피로노락톤"
         Drug.CYPROTERONE -> "사이프로테론"
         Drug.PROGESTERONE_MICRONIZED -> "미분화 프로게스테론"
+        Drug.MEDROXYPROGESTERONE_ACETATE -> "프로베라"
     }
 
 /** What the chip row calls a route; both injections are one "주사" until the sub-choice. */

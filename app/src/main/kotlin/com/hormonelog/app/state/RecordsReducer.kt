@@ -28,6 +28,7 @@ fun drugsFor(route: Route): List<Drug> {
     val order = listOf(
         Drug.ESTRADIOL_VALERATE, Drug.ESTRADIOL_CYPIONATE, Drug.ESTRADIOL_TABLET, Drug.CYPROTERONE,
         Drug.SPIRONOLACTONE, Drug.ESTRADIOL_PATCH, Drug.ESTRADIOL_GEL, Drug.PROGESTERONE_MICRONIZED,
+        Drug.MEDROXYPROGESTERONE_ACETATE,
     )
     return order.filter { route in it.allowedRoutes }
 }

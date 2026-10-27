@@ -270,6 +270,7 @@ object CsvIo {
         "estradiol_gel", "e2_gel", "에스트라디올_젤" -> Drug.ESTRADIOL_GEL
         "spironolactone", "spiro", "스피로노락톤", "스피로놀락톤" -> Drug.SPIRONOLACTONE
         "progesterone_micronized", "micronized_progesterone", "p4", "미분화_프로게스테론" -> Drug.PROGESTERONE_MICRONIZED
+        "medroxyprogesterone_acetate", "medroxyprogesterone", "provera", "프로베라", "메드록시프로게스테론" -> Drug.MEDROXYPROGESTERONE_ACETATE
         "cyproterone", "cpa", "androcur", "안드로쿨", "사이프로테론" -> Drug.CYPROTERONE
         else -> null
     }
@@ -315,6 +316,7 @@ object CsvIo {
         Drug.SPIRONOLACTONE -> "spironolactone"
         Drug.CYPROTERONE -> "cyproterone"
         Drug.PROGESTERONE_MICRONIZED -> "progesterone_micronized"
+        Drug.MEDROXYPROGESTERONE_ACETATE -> "medroxyprogesterone_acetate"
     }
 
     private fun routeKey(r: Route) = when (r) {

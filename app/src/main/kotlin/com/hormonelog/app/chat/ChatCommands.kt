@@ -35,6 +35,9 @@ object ChatCommands {
         "시프로테론아세테이트" to Drug.CYPROTERONE, "cyproterone" to Drug.CYPROTERONE,
         "유트로게스탄" to Drug.PROGESTERONE_MICRONIZED, "미분화프로게스테론" to Drug.PROGESTERONE_MICRONIZED,
         "유트로게스탄연질캡슐" to Drug.PROGESTERONE_MICRONIZED,
+        "프로베라" to Drug.MEDROXYPROGESTERONE_ACETATE, "메드록시프로게스테론" to Drug.MEDROXYPROGESTERONE_ACETATE,
+        "메드록시프로게스테론아세테이트" to Drug.MEDROXYPROGESTERONE_ACETATE, "medroxyprogesterone" to Drug.MEDROXYPROGESTERONE_ACETATE,
+        "provera" to Drug.MEDROXYPROGESTERONE_ACETATE,
     )
     private val routes = mapOf("근육주사" to Route.IM_INJECTION, "im" to Route.IM_INJECTION,
         "피하주사" to Route.SC_INJECTION, "sc" to Route.SC_INJECTION, "경구" to Route.ORAL,
@@ -151,7 +154,7 @@ object ChatCommands {
             } else null
             if (c.usual && plan == null) return ask("일치하는 기존 일정이 하나로 정해지지 않아요. 제품명·용량·투여 경로를 알려주세요.")
             val drug = parsedDrug ?: plan?.drug ?: return ask("정확한 제품이나 성분을 알려주세요. ‘데포’만으로 약물을 정하지 않아요. 예: EV(발레레이트), EC(사이피오네이트).")
-            val oral = if (Regex("복용|먹었|먹엇|먹은|먹음|먹고").containsMatchIn(text) || drug in setOf(Drug.CYPROTERONE, Drug.SPIRONOLACTONE)) Route.ORAL else null
+            val oral = if (Regex("복용|먹었|먹엇|먹은|먹음|먹고").containsMatchIn(text) || drug in setOf(Drug.CYPROTERONE, Drug.SPIRONOLACTONE, Drug.MEDROXYPROGESTERONE_ACETATE)) Route.ORAL else null
             val route = parsedRoute ?: plan?.route ?: oral ?: return ask("투여 경로만 알려주세요. 예: 근육주사, 피하주사, 경구, 설하.")
             if (c.amount.isBlank() && plan == null) return ask("${c.drug.ifBlank { drug.label }} 용량은 몇 mg인가요? 실제 복용량을 ‘숫자+mg’ 형태로 알려주세요.")
             val amountMatch = Regex("([0-9]+(?:\\.[0-9]+)?)(mg)?").matchEntire(compact(c.amount))

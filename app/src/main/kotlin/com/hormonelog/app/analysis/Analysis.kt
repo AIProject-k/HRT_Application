@@ -3,6 +3,7 @@ package com.hormonelog.app.analysis
 import com.hormonelog.core.domain.Analyte
 import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.DoseStatus
+import com.hormonelog.core.domain.Drug
 import com.hormonelog.core.domain.GonadalStatus
 import com.hormonelog.core.domain.LabAnalyteValue
 import com.hormonelog.core.domain.LabResult
@@ -65,11 +66,14 @@ object Analysis {
         (v.canonicalValue ?: LabAnalyteValue.canonical(v.analyte, v.reportedValue, v.reportedUnit))?.takeIf { it.isFinite() }
 
     fun calibrate(doses: List<DoseEvent>, labs: List<LabResult>, status: GonadalStatus): CalibrationResult =
-        calibrationEngine.calibrate(doses, labs, status, baselineT(labs))
+        calibrationEngine.calibrate(doses.withoutMpa(), labs, status, baselineT(labs))
+
+    /** MPA has no curve yet; kept out of the E2 and Total T models, where it would read as a flat baseline. */
+    private fun List<DoseEvent>.withoutMpa(): List<DoseEvent> = filter { it.drug != Drug.MEDROXYPROGESTERONE_ACETATE }
 
     /** Doses a plan still expects after [now], as events the model can use. */
     fun planned(regimens: List<Regimen>, doses: List<DoseEvent>, now: Instant, until: Instant, zone: ZoneId): List<DoseEvent> =
-        regimens.filter { it.active }.flatMap { r ->
+        regimens.filter { it.active && it.drug != Drug.MEDROXYPROGESTERONE_ACETATE }.flatMap { r ->
             Regimen.expected(r, now, until, doses, zone).map { at ->
                 DoseEvent(
                     id = UUID.nameUUIDFromBytes("${r.id}@${at.toEpochMilli()}".toByteArray()),
@@ -104,7 +108,7 @@ object Analysis {
         calibration: CalibrationResult = calibrate(doses, labs, status),
         samples: Int = 160,
     ): Curves {
-        val taken = doses.filter { it.status.wasTaken }
+        val taken = doses.withoutMpa().filter { it.status.wasTaken }
         val planned = planned(regimens, doses, now, to, zone)
         if (taken.isEmpty() && planned.isEmpty()) {
             return Curves(null, null, emptyList(), status == GonadalStatus.DECLINED, calibration, emptyList())
@@ -132,7 +136,7 @@ object Analysis {
 
     /** Median and interval of E2 right now (or at [at]), calibrated; null with no usable dose. */
     fun e2At(doses: List<DoseEvent>, regimens: List<Regimen>, calibration: CalibrationResult, at: Instant, now: Instant, zone: ZoneId): EstimatePoint? {
-        val taken = doses.filter { it.status.wasTaken }
+        val taken = doses.withoutMpa().filter { it.status.wasTaken }
         if (taken.isEmpty()) return null
         return e2Engine.estimateAt(taken + planned(regimens, doses, now, at.plusSeconds(3600), zone), at, adjustments = calibration.adjustments)
     }
@@ -144,14 +148,14 @@ object Analysis {
         calibration: CalibrationResult,
         at: Instant,
     ): EstimatePoint? {
-        val taken = doses.filter { it.status.wasTaken }
+        val taken = doses.withoutMpa().filter { it.status.wasTaken }
         if (taken.isEmpty() || status == GonadalStatus.DECLINED) return null
         return ttEngine.estimateAt(taken, at, status, calibration.adjustments, baselineT(labs), calibration.ttAdjustment)
     }
 
     /** Expected peak and trough of the cycle that contains [at]. */
     fun cycle(doses: List<DoseEvent>, regimens: List<Regimen>, calibration: CalibrationResult, at: Instant, zone: ZoneId): CycleStats? {
-        val taken = doses.filter { it.status.wasTaken }
+        val taken = doses.withoutMpa().filter { it.status.wasTaken }
         if (taken.isEmpty()) return null
         val horizon = at.plusSeconds(60L * 86_400L)
         return cycleAnalysis.stats(taken + planned(regimens, doses, at, horizon, zone), at, calibration.adjustments)
@@ -159,7 +163,7 @@ object Analysis {
 
     /** Where [at] (a blood draw, say) sits in its dosing cycle: how long after the dose, near which extreme. */
     fun cyclePosition(doses: List<DoseEvent>, regimens: List<Regimen>, calibration: CalibrationResult, at: Instant, zone: ZoneId): CyclePosition? {
-        val taken = doses.filter { it.status.wasTaken }
+        val taken = doses.withoutMpa().filter { it.status.wasTaken }
         if (taken.isEmpty()) return null
         val horizon = at.plusSeconds(60L * 86_400L)
         return cycleAnalysis.position(taken + planned(regimens, doses, at, horizon, zone), at, calibration.adjustments)

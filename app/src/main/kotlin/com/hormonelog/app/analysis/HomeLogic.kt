@@ -79,8 +79,10 @@ fun chartModelFor(
         val used = !isP4 && curves.calibration.labs[lab.id]?.let { if (isT) it.tt?.used else it.e2?.used } == true
         ChartLab(at, value, used)
     }
+    // MPA has no curve yet, so a tick on the E2 or Total T chart would read as estrogen.
     fun relevant(d: DoseEvent) = if (isP4) d.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED
-        else d.drug != com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED
+        else d.drug != com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED &&
+            d.drug != com.hormonelog.core.domain.Drug.MEDROXYPROGESTERONE_ACETATE
     val ticks = doses.filter { it.occurredAt in from..to && relevant(it) }.map {
         ChartDose(it.occurredAt, if (it.status == DoseStatus.SKIPPED) TickState.MISSED else TickState.TAKEN, it.drug.isAntiandrogen)
     } + curves.planned.filter { it.occurredAt in from..to && relevant(it) }.map { ChartDose(it.occurredAt, TickState.PLANNED, it.drug.isAntiandrogen) }

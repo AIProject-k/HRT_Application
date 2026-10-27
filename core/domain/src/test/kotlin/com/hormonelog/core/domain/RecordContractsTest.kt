@@ -93,6 +93,7 @@ class RecordContractsTest {
         assertEquals(listOf(Route.PATCH), Drug.ESTRADIOL_PATCH.allowedRoutes)
         assertEquals(listOf(Route.GEL), Drug.ESTRADIOL_GEL.allowedRoutes)
         assertEquals(listOf(Route.IM_INJECTION, Route.SC_INJECTION), Drug.ESTRADIOL_CYPIONATE.allowedRoutes)
+        assertEquals(listOf(Route.ORAL), Drug.MEDROXYPROGESTERONE_ACETATE.allowedRoutes)
         assertEquals(listOf(DoseUnit.UG_PER_DAY), Route.PATCH.allowedUnits)
     }
 }

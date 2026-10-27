@@ -104,6 +104,23 @@ class CsvIoTest {
         }
     }
 
+    @Test
+    fun proveraIsReadByBrandAndGenericNameAndSurvivesExport() {
+        val r = CsvIo.parse(
+            """
+            $header
+            dose,2026-09-03T21:00,프로베라,oral,10,mg,,,,,,,,,
+            dose,2026-09-04T21:00,medroxyprogesterone_acetate,경구,2.5,mg,,,,,,,,,
+            """.trimIndent(),
+            seoul,
+        )
+        assertEquals(2, r.doses.count { it.drug == Drug.MEDROXYPROGESTERONE_ACETATE })
+
+        val again = CsvIo.parse(CsvIo.export(r.doses, r.labs, seoul), seoul)
+        assertEquals(listOf(10.0, 2.5), again.doses.sortedBy { it.occurredAt }.map { it.amountEntered })
+        assertTrue(again.doses.all { it.drug == Drug.MEDROXYPROGESTERONE_ACETATE && it.route == Route.ORAL })
+    }
+
     private val header = "type,datetime,drug,route,amount,unit,e2,tt,e2_unit,assay,note,status,tt_unit,site,baseline"
 
     @Test
