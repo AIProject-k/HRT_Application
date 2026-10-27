@@ -45,6 +45,13 @@ class ProgesteroneIntegrationTest {
         assertEquals(1, model.doses.size)
     }
 
+    @Test fun p4GapNamesTheOldRecordThatBlocksTheWindow() {
+        val blocker = dose(now.minusSeconds(86400L * 60), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
+        val curves = Analysis.curves(listOf(p4, blocker), emptyList(), emptyList(), GonadalStatus.DECLINED, now, now.minusSeconds(86400), now, SEOUL)
+        assertNull(curves.p4)
+        assertEquals(listOf(blocker), curves.p4Blockers)
+    }
+
     @Test fun p4DoesNotMoveEstrogenCycleOrCalibrationAndP4LabsAppearInTimeline() {
         val estrogen = dose(now.minusSeconds(86400))
         assertEquals(estrogen, Analysis.lastEstrogenBefore(listOf(estrogen, p4), now))

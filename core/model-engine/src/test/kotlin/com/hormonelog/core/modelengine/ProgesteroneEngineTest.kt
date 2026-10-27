@@ -53,6 +53,17 @@ class ProgesteroneEngineTest {
         assertNull(engine.estimateAt(listOf(dose(), dose(400.0)), t))
     }
 
+    @Test fun blockersNameEveryUnsupportedDoseUpToTheEndAndOneBlanksTheCurve() {
+        val old = dose(400.0, at = t.minusSeconds(60L * 86400))
+        val future = dose(400.0, at = t.plusSeconds(86400))
+        assertEquals(listOf(old), engine.blockers(listOf(dose(), old, future), t))
+        assertTrue(engine.blockers(listOf(dose()), t).isEmpty())
+        assertEquals(
+            EstimateResult.Unavailable(ModelUnavailableReason.ROUTE_UNSUPPORTED),
+            engine.curve(listOf(dose(), old), t.minusSeconds(86400), t),
+        )
+    }
+
     @Test fun noProgesteroneSkippedAndFutureDosesDoNotCreateAPresentEstimate() {
         assertNull(engine.estimateAt(emptyList(), t))
         assertNull(engine.estimateAt(listOf(dose().copy(status = DoseStatus.SKIPPED)), t))

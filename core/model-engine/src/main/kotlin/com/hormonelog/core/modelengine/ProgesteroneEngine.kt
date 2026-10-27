@@ -30,6 +30,10 @@ class ProgesteroneEngine(private val bundle: EvidenceBundle) {
         return EstimatePoint(at, value, value, value)
     }
 
+    /** Oral P4 doses up to [to] that the curve cannot use. Any one of them blanks the whole curve. */
+    fun blockers(doses: List<DoseEvent>, to: Instant): List<DoseEvent> =
+        doses.filter { it.drug == Drug.PROGESTERONE_MICRONIZED && it.status.wasTaken && !it.occurredAt.isAfter(to) && !supported(it) }
+
     private fun ready(): Boolean = bundle.supports(Route.ORAL) &&
         (listOf("referenceMg", "studyBaseline", "minMg", "maxMg") + hours.drop(1).map { "hour$it" }).all { p[it]?.isFinite() == true } &&
         p.getValue("referenceMg") > 0 && p.getValue("minMg") > 0 && p.getValue("maxMg") >= p.getValue("minMg") &&

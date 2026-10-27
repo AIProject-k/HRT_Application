@@ -52,6 +52,7 @@ import com.hormonelog.app.feature.common.DatePickDialog
 import com.hormonelog.app.feature.common.Fmt
 import com.hormonelog.app.feature.common.reasonText
 import com.hormonelog.app.feature.common.shortLabel
+import com.hormonelog.app.feature.common.summary
 import com.hormonelog.app.state.AppState
 import com.hormonelog.app.state.ChartRange
 import com.hormonelog.app.state.HormoneSeries
@@ -72,6 +73,7 @@ import com.hormonelog.app.ui.theme.Hl
 import com.hormonelog.app.ui.theme.HlRadius
 import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
+import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.CalibrationResult
@@ -305,7 +307,7 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
                 size = HlSize.t12, color = c.muted,
             )
             HlText(
-                if (point != null && isP4) "예상 $name ${"%.2f".format(point.median)} $unit" else if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else if (isP4) "경구 P4 100–300 mg 복용 기록이 필요해요 · 지원 밖 기록이 함께 있으면 합산 예상은 제공하지 않아요" else "이 시점 예상값 없음",
+                if (point != null && isP4) "예상 $name ${"%.2f".format(point.median)} $unit" else if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else if (isP4) p4Gap(curves?.p4Blockers.orEmpty(), fmt) else "이 시점 예상값 없음",
                 size = HlSize.t16, weight = FontWeight.Bold, color = accent, tabular = true,
             )
             if (near != null) {
@@ -332,6 +334,14 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
         HlText("가로로 끌면 날짜별 값을 볼 수 있어요", size = HlSize.t12, color = c.muted, modifier = Modifier.padding(horizontal = 4.dp))
     }
     HlText("요약 · $summary", size = HlSize.t12, color = c.muted, lineHeight = 1.6f, modifier = Modifier.padding(horizontal = 4.dp))
+}
+
+/** Names the records that stop the P4 curve, so the user can fix or remove them. */
+private fun p4Gap(blockers: List<DoseEvent>, fmt: Fmt): String {
+    if (blockers.isEmpty()) return "경구 P4 100–300 mg 복용 기록이 필요해요 · 지원 밖 기록이 함께 있으면 합산 예상은 제공하지 않아요"
+    val shown = blockers.take(2).joinToString(" · ") { "${fmt.date(it.occurredAt)} ${it.summary()}" }
+    val more = if (blockers.size > 2) " 외 ${blockers.size - 2}건" else ""
+    return "지원 밖 P4 기록이 곡선을 막고 있어요: $shown$more. 고치거나 지우면 다시 그려요"
 }
 
 private fun rangeText(range: ChartRange): String = when (range) {

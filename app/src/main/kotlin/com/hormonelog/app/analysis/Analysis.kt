@@ -37,6 +37,8 @@ data class Curves(
     /** Planned doses beyond now, for the chart's hollow ticks. */
     val planned: List<DoseEvent>,
     val p4: EstimateSeries? = null,
+    /** Oral P4 doses (recorded or planned) that stop the P4 curve; empty when the curve is drawn. */
+    val p4Blockers: List<DoseEvent> = emptyList(),
 ) {
     val hasE2: Boolean get() = e2 != null
 }
@@ -108,6 +110,7 @@ object Analysis {
             return Curves(null, null, emptyList(), status == GonadalStatus.DECLINED, calibration, emptyList())
         }
         val all = taken + planned
+        val p4Doses = taken.filter { !it.occurredAt.isAfter(now) } + planned
         val e2 = e2Engine.curve(all, from, to, samples = samples, adjustments = calibration.adjustments)
         val tt = ttEngine.curve(
             all, from, to, status, samples = samples,
@@ -120,7 +123,8 @@ object Analysis {
             ttHidden = status == GonadalStatus.DECLINED,
             calibration = calibration,
             planned = planned,
-            p4 = (p4Engine.curve(taken.filter { !it.occurredAt.isAfter(now) } + planned, from, to, samples) as? EstimateResult.Available)?.series,
+            p4 = (p4Engine.curve(p4Doses, from, to, samples) as? EstimateResult.Available)?.series,
+            p4Blockers = p4Engine.blockers(p4Doses, to),
         )
     }
 
