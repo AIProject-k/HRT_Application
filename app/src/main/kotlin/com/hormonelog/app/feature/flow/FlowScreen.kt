@@ -285,7 +285,7 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
     val model = if (curves != null) chartModelFor(ui.series, curves, s.doses, s.labs, w.from, w.to, fmt.now, guide = ui.guide) else null
     val isP4 = ui.series == HormoneSeries.P4
     val isMpa = ui.series == HormoneSeries.MPA
-    val unit = if (isP4) "ng/mL" else if (isE2) "pg/mL" else "ng/dL"
+    val unit = if (isP4 || isMpa) "ng/mL" else if (isE2) "pg/mL" else "ng/dL"
     val name = if (isP4) "P4 복용분" else if (isE2) "E2" else if (isMpa) "MPA" else "Total T"
     val accent = if (isP4) c.orange else if (isE2) c.teal else if (isMpa) c.violet else c.blue
 
@@ -312,7 +312,7 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 4.dp).semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (isMpa) HlText("MPA (프로베라 혈중 약물 농도, P4 아님)", size = HlSize.t13, weight = FontWeight.Bold, color = c.violet)
+            if (isMpa) HlText("MPA (프로베라, P4 아님)", size = HlSize.t13, weight = FontWeight.Bold, color = c.violet)
             HlText(
                 if (ui.scrub == null) "지금 · ${fmt.dateDay(fmt.now)}" else "${fmt.dateDay(at)} ${fmt.time(at)}${if (at.isAfter(fmt.now)) " · 예정 투약 기준" else ""}",
                 size = HlSize.t12, color = c.muted,

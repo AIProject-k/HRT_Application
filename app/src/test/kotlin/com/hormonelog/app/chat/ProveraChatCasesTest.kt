@@ -77,4 +77,14 @@ class ProveraChatCasesTest {
         assertTrue(mpaDoses(h).size <= 1)
         assertTrue(mpaDoses(h).all { it.amountEntered == 5.0 })
     }
+
+    @Test fun anInjectionIsNeverSavedAsAnOralDose() {
+        for (text in listOf(
+            "방금 프로베라 10mg 주사 맞았어", "방금 프로베라 5mg 근육주사 맞았어", "방금 프로베라 5mg 맞았어",
+            "방금 데포프로베라 150mg 맞았어", "어제 21시 프로베라 5mg 주사 맞았어",
+        )) {
+            val h = sent(text)
+            assertTrue("saved for: $text -> ${h.lastReply}", mpaDoses(h).isEmpty())
+        }
+    }
 }

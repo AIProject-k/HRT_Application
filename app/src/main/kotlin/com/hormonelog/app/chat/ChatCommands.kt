@@ -154,6 +154,9 @@ object ChatCommands {
             } else null
             if (c.usual && plan == null) return ask("일치하는 기존 일정이 하나로 정해지지 않아요. 제품명·용량·투여 경로를 알려주세요.")
             val drug = parsedDrug ?: plan?.drug ?: return ask("정확한 제품이나 성분을 알려주세요. ‘데포’만으로 약물을 정하지 않아요. 예: EV(발레레이트), EC(사이피오네이트).")
+            // Provera is oral only, so the oral default must not turn an injection sentence into an oral dose.
+            if (drug == Drug.MEDROXYPROGESTERONE_ACETATE && parsedRoute != Route.ORAL && Regex("주사|근육|피하|데포|맞았|맞음|맞은|맞고|질정|패치|젤").containsMatchIn(text))
+                return ask("프로베라는 경구로만 기록할 수 있어요. 주사나 다른 경로의 기록은 저장하지 않았어요.")
             val oral = if (Regex("복용|먹었|먹엇|먹은|먹음|먹고").containsMatchIn(text) || drug in setOf(Drug.CYPROTERONE, Drug.SPIRONOLACTONE, Drug.MEDROXYPROGESTERONE_ACETATE)) Route.ORAL else null
             val route = parsedRoute ?: plan?.route ?: oral ?: return ask("투여 경로만 알려주세요. 예: 근육주사, 피하주사, 경구, 설하.")
             if (c.amount.isBlank() && plan == null) return ask("${c.drug.ifBlank { drug.label }} 용량은 몇 mg인가요? 실제 복용량을 ‘숫자+mg’ 형태로 알려주세요.")
