@@ -10,6 +10,7 @@ import com.hormonelog.core.domain.GonadalStatus
 import com.hormonelog.core.domain.Regimen
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.ThemeMode
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -78,6 +79,55 @@ class BackupCodecTest {
     fun theBackupCarriesRecordsAThisBuildCouldNotRead() {
         val withCarried = snapshot.copy(carried = mapOf("doses" to listOf("""{"id":"x","drug":"FUTURE"}""")))
         val opened = BackupCodec.open(BackupCodec.create(withCarried, settings, 0L)) as BackupCodec.Opened.Ok
+        assertEquals(1, opened.snapshot.carriedCount)
+    }
+
+    @Test
+    fun aProveraDoseSurvivesABackupWithEveryFieldIntact() {
+        val provera = DoseEvent(
+            UUID.randomUUID(), Instant.parse("2026-10-27T12:00:00Z"), "Asia/Seoul", Drug.MEDROXYPROGESTERONE_ACETATE,
+            Route.ORAL, 2.5, DoseUnit.MG, 2.5, DoseStatus.ADMINISTERED, note = "메모",
+        )
+        val opened = BackupCodec.open(
+            BackupCodec.create(snapshot.copy(doses = snapshot.doses + provera), settings, 0L),
+        ) as BackupCodec.Opened.Ok
+        val back = opened.snapshot.doses.single { it.id == provera.id }
+        assertEquals(Drug.MEDROXYPROGESTERONE_ACETATE, back.drug)
+        assertEquals(Route.ORAL, back.route)
+        assertEquals(2.5, back.amountEntered, 0.0)
+        assertEquals(DoseUnit.MG, back.enteredUnit)
+        assertEquals(2.5, back.normalizedMilligrams!!, 0.0)
+        assertEquals(DoseStatus.ADMINISTERED, back.status)
+        assertEquals("메모", back.note)
+        assertEquals(0, opened.snapshot.carriedCount)
+    }
+
+    @Test
+    fun aRecordNamingADrugThisBuildDoesNotKnowIsCarriedBackWithItsContent() {
+        val raw = """{"id":"${UUID.randomUUID()}","drug":"FUTURE_PROGESTIN","route":"ORAL","amountEntered":5,"enteredUnit":"MG"}"""
+        val first = BackupCodec.open(
+            BackupCodec.create(snapshot.copy(carried = mapOf("doses" to listOf(raw))), settings, 0L),
+        ) as BackupCodec.Opened.Ok
+        assertEquals(1, first.snapshot.carriedCount)
+
+        val second = BackupCodec.open(BackupCodec.create(first.snapshot, settings, 0L)) as BackupCodec.Opened.Ok
+        assertEquals(1, second.snapshot.carriedCount)
+        val expected = JSONObject(raw)
+        val actual = JSONObject(second.snapshot.carried.getValue("doses").single())
+        assertEquals(expected.keys().asSequence().toSet(), actual.keys().asSequence().toSet())
+        expected.keys().forEach { key -> assertEquals(key, expected.get(key).toString(), actual.get(key).toString()) }
+    }
+
+    @Test
+    fun aPairingTheRecorderRefusesIsKeptAsCarriedDataNotRestoredAsADose() {
+        val invalid = DoseEvent(
+            UUID.randomUUID(), Instant.parse("2026-10-27T12:00:00Z"), "Asia/Seoul", Drug.MEDROXYPROGESTERONE_ACETATE,
+            Route.IM_INJECTION, 10.0, DoseUnit.MG, 10.0, DoseStatus.ADMINISTERED,
+        )
+        val opened = BackupCodec.open(
+            BackupCodec.create(snapshot.copy(doses = listOf(invalid)), settings, 0L),
+        ) as BackupCodec.Opened.Ok
+        assertTrue(opened.snapshot.doses.isEmpty())
         assertEquals(1, opened.snapshot.carriedCount)
     }
 }

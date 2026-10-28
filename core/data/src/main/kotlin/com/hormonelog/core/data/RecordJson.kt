@@ -20,6 +20,7 @@ import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.StockItem
 import com.hormonelog.core.domain.Symptom
 import com.hormonelog.core.domain.Telehealth
+import com.hormonelog.core.domain.allowedRoutes
 import com.hormonelog.core.domain.VisitMemo
 import org.json.JSONArray
 import org.json.JSONObject
@@ -94,9 +95,9 @@ internal object RecordJson {
             return out
         }
         return RecordSnapshot(
-            doses = read("doses", ::doseFrom),
+            doses = read("doses") { doseFrom(it).also { d -> requireRecordableRoute(d.drug, d.route) } },
             labs = read("labs", ::labFrom),
-            regimens = read("regimens", ::regimenFrom),
+            regimens = read("regimens") { regimenFrom(it).also { r -> requireRecordableRoute(r.drug, r.route) } },
             clinics = read("clinics", ::clinicFrom),
             memos = read("memos", ::memoFrom),
             journal = read("journal", ::journalFrom),
@@ -127,6 +128,10 @@ internal object RecordJson {
         putOpt("p4Product", d.p4Context?.product?.name)
         putOpt("p4Meal", d.p4Context?.meal?.name)
     }
+
+    /** A pairing the recorder itself refuses is kept aside as carried data, never restored as a real dose or schedule. */
+    private fun requireRecordableRoute(drug: Drug, route: Route) =
+        require(route in drug.allowedRoutes) { "$drug cannot be given by $route" }
 
     private fun doseFrom(o: JSONObject) = DoseEvent(
         id = UUID.fromString(o.getString("id")),

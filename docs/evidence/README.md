@@ -12,6 +12,14 @@ This registry records sources considered for HormoneLog model parameters. Listin
 | ASSAY_BIAS_2022 | E2 assay uncertainty | PMID 35015702 | 89 transgender women; compares immunoassays with LC-MS/MS | Measurement-uncertainty review required |
 | GEL_LABEL | Estradiol gel | DailyMed estradiol gel label | Postmenopausal population; product-specific PK | Indirect evidence; no production parameter extracted |
 | PATCH_LABEL | Estradiol patch | DailyMed estradiol transdermal system label | Postmenopausal population; product-specific PK | Indirect evidence; no production parameter extracted |
+| MPA_PFIZER_LABEL_TABLE1 | Oral MPA (PROVERA tablets) | Pfizer PROVERA prescribing information, clinical pharmacology, Table 1 (pfizermedical.com/provera/clinical-pharmacology), read 2026-10-28 | Postmenopausal women, fasting, serum GC-MS, mean (SD). Single 2 × 10 mg and 8 × 2.5 mg are each 20 mg in total, not 10 mg single doses. Repeated 1 × 10 mg daily, sampled after the day-7 dose | PK summary only (stage PK_SUMMARY). No time series, so no curve until MODEL_VALIDATED |
+| MPA_PFIZER_FOOD | Oral MPA with food | Same page, food-effect text | 10 mg taken before or after a meal: Cmax +50–70%, AUC +18–33%, half-life unchanged. No fed-arm means, n or design | Relative change only; not a curve |
+| MPA_PFIZER_HEPATIC | Oral MPA, advanced liver disease | Same page | 14 patients; MPA elimination reduced. No values | Metadata only; carried into the disclaimers |
+| MPA_WIKSTROM_1984 | Oral MPA 5 and 10 mg | PMID 6233840 | 5 women; repeated over 8 weeks; RIA. Abstract read 2026-10-27 | Metadata only; full text not read |
+| MPA_SVENSSON_1994 | Oral MPA 5 mg with a combined product | PMID 8015506 | 12 postmenopausal women; randomised crossover. Abstract read 2026-10-27 | Metadata only |
+| MPA_JOHANSSON_1986 | High-dose oral MPA (500 and 1000 mg) | PMID 2943134 | Two-compartment model; RIA; 96-hour sampling. Abstract read 2026-10-27 | Metadata only; not a 10 mg reference |
+| MPA_VICTOR_JOHANSSON_1976 | Oral MPA | PMID 975821 | No abstract on PubMed; ScienceDirect returned 403 | Not verified; no number stored |
+| MPA_KIM_2001, MPA_BLUE_2018 | MPA assays | PMID 11675672, PMID 29407362 | LC-MS/MS method limits only (LOQ 0.05 and 0.020 ng/mL) | Method metadata only |
 
 ## Required parameter-review record
 
@@ -41,6 +49,24 @@ never uses them for dosing advice.
 The E2 3-compartment rate constants and patch parameters are from the MIT-licensed
 open-source **estrannaise.js** (© 2025 alix, github.com/WHSAH/estrannaise.js). Its
 model form: `C(t) = dose·d·k1·k2·[ Σ eᵏ terms ]`.
+
+## MPA evidence (`MpaEvidence`, bundle `mpa-evidence-2026-10-28.1`)
+
+Defined in `core/evidence/.../MpaEvidence.kt`. The bundle stage is `PK_SUMMARY`, the strongest stage any source reaches. Numbers need `MODEL_VALIDATED` and an enabled model, so the MPA path returns `EVIDENCE_INSUFFICIENT` and draws no curve.
+
+- The Pfizer table gives 20 women for the single-dose study, with no per-arm split and no sampling times.
+- Single 20 mg arms and the repeated 10 mg arm are never pooled. The registry holds no single 10 mg value.
+- Literature abstracts were read, but no full text was reached, so no number is stored from them.
+- WPATH SOC8 (PMC9553112) is clinical guidance with no PK values, so it is not in the PK registry.
+
+## Oral progesterone (P4) re-check, 2026-10-28
+
+- ANSM RCP §5.2 means (2 h 11.75, 4 h 8.37, 6 h 2.0, 8 h 1.64 ng/mL, baseline 0.13) match the parameters in `ProgesteroneEvidence`.
+- The label names no assay. A reference curve read from a figure (Apolikhina 2023, Fig. 3, about ±10%) is about 4–8× lower at 2–8 h. Levine & Watson 2000 (PMID 10689005) report that direct RIA reads about 8× higher than LC-MS for oral progesterone. This is a hypothesis; the assay behind the label is unknown.
+- In that figure the 24 h value sits below the pre-dose value, so baseline handling is unclear.
+- Food: Qin 2022 (PMID 34806331) and Pickar 2015 report large meal effects. The app records meal context but does not model it.
+- The 8 h tail is an extrapolation of the 6–8 h slope. The label has no measured points after 8 h.
+- Full texts not reached: Simon 1993 (403), Qin 2022 (403), Soni 2025 (403). Apolikhina 2023 tables are images.
 
 ## Safety rule
 

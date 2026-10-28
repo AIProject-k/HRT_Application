@@ -68,10 +68,13 @@ fun chartModelFor(
 ): ChartModel {
     val isT = series == HormoneSeries.TT
     val isP4 = series == HormoneSeries.P4
+    val isMpa = series == HormoneSeries.MPA
+    // MPA has no lab analyte yet, so the MPA tab draws no measured points.
     val analyte = when (series) {
         HormoneSeries.E2 -> Analyte.ESTRADIOL
         HormoneSeries.TT -> Analyte.TOTAL_TESTOSTERONE
         HormoneSeries.P4 -> Analyte.PROGESTERONE
+        HormoneSeries.MPA -> null
     }
     val chartLabs = labs.mapNotNull { lab ->
         val at = lab.collectedAt ?: return@mapNotNull null
@@ -79,17 +82,21 @@ fun chartModelFor(
         val used = !isP4 && curves.calibration.labs[lab.id]?.let { if (isT) it.tt?.used else it.e2?.used } == true
         ChartLab(at, value, used)
     }
-    // MPA has no curve yet, so a tick on the E2 or Total T chart would read as estrogen.
-    fun relevant(d: DoseEvent) = if (isP4) d.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED
-        else d.drug != com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED &&
+    // Each tab draws only its own drug's doses, so an MPA tick can never read as estrogen or as P4.
+    fun relevant(d: DoseEvent) = when (series) {
+        HormoneSeries.P4 -> d.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED
+        HormoneSeries.MPA -> d.drug == com.hormonelog.core.domain.Drug.MEDROXYPROGESTERONE_ACETATE
+        else -> d.drug != com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED &&
             d.drug != com.hormonelog.core.domain.Drug.MEDROXYPROGESTERONE_ACETATE
+    }
+    val plannedDoses = if (isMpa) curves.mpaPlanned else curves.planned
     val ticks = doses.filter { it.occurredAt in from..to && relevant(it) }.map {
         ChartDose(it.occurredAt, if (it.status == DoseStatus.SKIPPED) TickState.MISSED else TickState.TAKEN, it.drug.isAntiandrogen)
-    } + curves.planned.filter { it.occurredAt in from..to && relevant(it) }.map { ChartDose(it.occurredAt, TickState.PLANNED, it.drug.isAntiandrogen) }
+    } + plannedDoses.filter { it.occurredAt in from..to && relevant(it) }.map { ChartDose(it.occurredAt, TickState.PLANNED, it.drug.isAntiandrogen) }
     return ChartModel(
-        curve = when (series) { HormoneSeries.E2 -> curves.e2; HormoneSeries.TT -> curves.tt; HormoneSeries.P4 -> curves.p4 },
+        curve = when (series) { HormoneSeries.E2 -> curves.e2; HormoneSeries.TT -> curves.tt; HormoneSeries.P4 -> curves.p4; HormoneSeries.MPA -> curves.mpaSeries },
         from = from, to = to, now = now,
-        labs = chartLabs, doses = ticks, isTotalT = isT, isP4 = isP4,
+        labs = chartLabs, doses = ticks, isTotalT = isT, isP4 = isP4, isMpa = isMpa,
         guide = if (guide && series == HormoneSeries.E2) GUIDELINE_E2 else null,
     )
 }

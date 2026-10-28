@@ -38,6 +38,7 @@ import com.hormonelog.app.feature.common.Fmt
 import com.hormonelog.app.feature.common.reasonText
 import com.hormonelog.app.feature.common.shortLabel
 import com.hormonelog.app.feature.common.doseSummary
+import com.hormonelog.app.feature.common.p4NoNumberWords
 import com.hormonelog.app.feature.flow.EstimateChart
 import com.hormonelog.app.state.AppState
 import com.hormonelog.app.state.HormoneSeries
@@ -63,6 +64,7 @@ import com.hormonelog.app.ui.theme.HeroTracking
 import com.hormonelog.core.domain.Drug
 import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.EstimatePoint
+import com.hormonelog.core.modelengine.P4Status
 import java.time.temporal.ChronoUnit
 
 /** Everything the home screen can ask the app to do. */
@@ -186,10 +188,12 @@ fun HomeScreen(s: AppState, fmt: Fmt, actions: HomeActions, modifier: Modifier =
 
             if (!curves.ttHidden && tt != null) TotalTCard(tt)
             if (s.doses.any { it.drug == com.hormonelog.core.domain.Drug.PROGESTERONE_MICRONIZED && it.status.wasTaken && !it.occurredAt.isAfter(now) }) {
-                val p4 = Analysis.p4At(s.doses, now)
+                val p4 = Analysis.p4Moment(curves, s.doses, now)
+                val number = p4.point?.takeIf { p4.status == P4Status.AVAILABLE }
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     HlText("지금 P4 복용분 예상", size = HlSize.t14, weight = FontWeight.SemiBold, color = c.orange)
-                    HlText(p4?.let { "${"%.2f".format(it.median)} ng/mL" } ?: "예상값 없음 · 지원 밖 복용 기록 확인", size = HlSize.t22, weight = FontWeight.Bold)
+                    HlText(number?.let { "${"%.2f".format(it.median)} ng/mL" } ?: "예상값 없음", size = HlSize.t22, weight = FontWeight.Bold)
+                    if (number == null) HlText(p4NoNumberWords(p4.status, p4.blockers, fmt), size = HlSize.t12, color = c.muted)
                     HlText("일반 허가자료 참고 · 제품·식사 조건 미반영 · 체내 총농도 아님", size = HlSize.t12, color = c.muted)
                 }
             }

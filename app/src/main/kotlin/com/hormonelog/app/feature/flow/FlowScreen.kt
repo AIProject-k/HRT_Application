@@ -50,6 +50,8 @@ import com.hormonelog.app.analysis.SteadyState
 import com.hormonelog.app.analysis.chartModelFor
 import com.hormonelog.app.feature.common.DatePickDialog
 import com.hormonelog.app.feature.common.Fmt
+import com.hormonelog.app.feature.common.mpaHeadline
+import com.hormonelog.app.feature.common.p4Headline
 import com.hormonelog.app.feature.common.reasonText
 import com.hormonelog.app.feature.common.shortLabel
 import com.hormonelog.app.feature.common.summary
@@ -73,7 +75,6 @@ import com.hormonelog.app.ui.theme.Hl
 import com.hormonelog.app.ui.theme.HlRadius
 import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
-import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.CalibrationResult
@@ -152,7 +153,10 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
         }
 
         HlSegmented(
-            items = listOf(SegItem(HormoneSeries.E2, "E2", content = c.teal), SegItem(HormoneSeries.TT, "Total T", content = c.blue), SegItem(HormoneSeries.P4, "P4", content = c.orange)),
+            items = listOf(
+                SegItem(HormoneSeries.E2, "E2", content = c.teal), SegItem(HormoneSeries.TT, "Total T", content = c.blue),
+                SegItem(HormoneSeries.P4, "P4", content = c.orange), SegItem(HormoneSeries.MPA, "MPA", content = c.violet),
+            ),
             selected = ui.series, onSelect = actions.series, minHeight = 42.dp, size = HlSize.t14,
         )
 
@@ -180,7 +184,7 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
             else -> ChartCard(s, fmt, curves, w, actions)
         }
 
-        if (curves != null && ui.series != HormoneSeries.P4) {
+        if (curves != null && ui.series != HormoneSeries.P4 && ui.series != HormoneSeries.MPA) {
             val notices = buildList<@Composable () -> Unit> {
                 if (curves.excluded.isNotEmpty()) {
                     val first = curves.excluded.first()
@@ -227,7 +231,7 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
             }
         }
 
-        if (ui.series != HormoneSeries.P4 && !ratios.isNullOrEmpty()) {
+        if (ui.series != HormoneSeries.P4 && ui.series != HormoneSeries.MPA && !ratios.isNullOrEmpty()) {
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card).padding(start = 12.dp, top = 14.dp, end = 12.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -280,19 +284,25 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
     val isE2 = ui.series == HormoneSeries.E2
     val model = if (curves != null) chartModelFor(ui.series, curves, s.doses, s.labs, w.from, w.to, fmt.now, guide = ui.guide) else null
     val isP4 = ui.series == HormoneSeries.P4
+    val isMpa = ui.series == HormoneSeries.MPA
     val unit = if (isP4) "ng/mL" else if (isE2) "pg/mL" else "ng/dL"
-    val name = if (isP4) "P4 복용분" else if (isE2) "E2" else "Total T"
-    val accent = if (isP4) c.orange else if (isE2) c.teal else c.blue
+    val name = if (isP4) "P4 복용분" else if (isE2) "E2" else if (isMpa) "MPA" else "Total T"
+    val accent = if (isP4) c.orange else if (isE2) c.teal else if (isMpa) c.violet else c.blue
 
     // The line above the chart follows the finger; at rest it reads "now".
     val at = if (model != null && ui.scrub != null) scrubInstant(model, ui.scrub) else fmt.now
-    val point = if (isP4 && model?.curve != null) Analysis.p4At(s.doses.filter { !it.occurredAt.isAfter(fmt.now) } + (curves?.planned ?: emptyList()), at) else model?.curve?.pointAt(at)
+    val p4 = if (isP4) Analysis.p4Moment(curves, s.doses.filter { !it.occurredAt.isAfter(fmt.now) } + (curves?.planned ?: emptyList()), at) else null
+    val point = if (p4 != null) p4.point else model?.curve?.pointAt(at)
     val near = model?.labs?.minByOrNull { kotlin.math.abs(it.at.toEpochMilli() - at.toEpochMilli()) }
         ?.takeIf { kotlin.math.abs(it.at.toEpochMilli() - at.toEpochMilli()) <= maxOf(0.6 * 86_400_000.0, w.spanDays * 86_400_000.0 / 120) }
     val summary = if (model?.curve != null) {
         val past = model.curve.points.filter { !it.at.isAfter(fmt.now) }
         val range = if (past.isEmpty()) "" else "${past.minOf { it.lower }.roundToInt()}–${past.maxOf { it.upper }.roundToInt()}"
-        "${rangeText(ui.range)} 예상 $name $range $unit, 실측 ${model.labs.count { it.at in w.from..fmt.now }}건"
+        val outOfRange = if (isP4) curves?.p4Excluded.orEmpty().size else 0
+        "${rangeText(ui.range)} 예상 $name $range $unit, 실측 ${model.labs.count { it.at in w.from..fmt.now }}건" +
+            if (outOfRange > 0) " · 영향 없는 지원 밖 기록 ${outOfRange}건은 뺐고 그대로 보존해요" else ""
+    } else if (isMpa) {
+        mpaHeadline(curves)
     } else {
         "예상 $name 곡선 없음"
     }
@@ -302,12 +312,13 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 4.dp).semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (isMpa) HlText("MPA (프로베라 혈중 약물 농도, P4 아님)", size = HlSize.t13, weight = FontWeight.Bold, color = c.violet)
             HlText(
                 if (ui.scrub == null) "지금 · ${fmt.dateDay(fmt.now)}" else "${fmt.dateDay(at)} ${fmt.time(at)}${if (at.isAfter(fmt.now)) " · 예정 투약 기준" else ""}",
                 size = HlSize.t12, color = c.muted,
             )
             HlText(
-                if (point != null && isP4) "예상 $name ${"%.2f".format(point.median)} $unit" else if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else if (isP4) p4Gap(curves?.p4Blockers.orEmpty(), fmt) else "이 시점 예상값 없음",
+                if (p4 != null) p4Headline(p4, fmt) else if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else if (isMpa) mpaHeadline(curves) else "이 시점 예상값 없음",
                 size = HlSize.t16, weight = FontWeight.Bold, color = accent, tabular = true,
             )
             if (near != null) {
@@ -323,25 +334,17 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
             Box(Modifier.fillMaxWidth().aspectRatio(320f / 210f))
         }
         FlowRow(Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            LegendRow(if (isP4) "복용분 근사 · 범위 미산정" else "예상 · 범위") { Box(Modifier.size(width = 14.dp, height = 8.dp).clip(RoundedCornerShape(4.dp)).background(if (isE2) c.tealSoft else c.blueSoft).border(2.dp, accent, RoundedCornerShape(4.dp))) }
+            LegendRow(if (isP4) "복용분 근사 · 범위 미산정" else if (isMpa) "곡선 없음" else "예상 · 범위") { Box(Modifier.size(width = 14.dp, height = 8.dp).clip(RoundedCornerShape(4.dp)).background(if (isE2) c.tealSoft else c.blueSoft).border(2.dp, accent, RoundedCornerShape(4.dp))) }
             LegendRow("실측") { MeasuredMark(8.dp) }
             LegendRow(if (isP4) "자동 보정 안 함" else "보정 제외") { MeasuredMark(8.dp, hollow = true) }
-            LegendRow(if (isP4) "프로게스테론 복용" else "에스트로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.blue)) }
-            if (!isP4) LegendRow("항안드로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.violet)) }
+            LegendRow(if (isP4) "프로게스테론 복용" else if (isMpa) "프로베라 복용" else "에스트로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.blue)) }
+            if (!isP4 && !isMpa) LegendRow("항안드로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.violet)) }
             LegendRow("예정") { Box(Modifier.size(width = 4.dp, height = 10.dp).border(1.2.dp, c.blue)) }
             LegendRow("놓침") { Box(Modifier.size(width = 4.dp, height = 10.dp).border(1.2.dp, c.danger)) }
         }
         HlText("가로로 끌면 날짜별 값을 볼 수 있어요", size = HlSize.t12, color = c.muted, modifier = Modifier.padding(horizontal = 4.dp))
     }
     HlText("요약 · $summary", size = HlSize.t12, color = c.muted, lineHeight = 1.6f, modifier = Modifier.padding(horizontal = 4.dp))
-}
-
-/** Names the records that stop the P4 curve, so the user can fix or remove them. */
-private fun p4Gap(blockers: List<DoseEvent>, fmt: Fmt): String {
-    if (blockers.isEmpty()) return "경구 P4 100–300 mg 복용 기록이 필요해요 · 지원 밖 기록이 함께 있으면 합산 예상은 제공하지 않아요"
-    val shown = blockers.take(2).joinToString(" · ") { "${fmt.date(it.occurredAt)} ${it.summary()}" }
-    val more = if (blockers.size > 2) " 외 ${blockers.size - 2}건" else ""
-    return "지원 밖 P4 기록이 곡선을 막고 있어요: $shown$more. 고치거나 지우면 다시 그려요"
 }
 
 private fun rangeText(range: ChartRange): String = when (range) {

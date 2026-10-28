@@ -2,8 +2,13 @@ package com.hormonelog.app.analysis
 
 import com.hormonelog.app.*
 import com.hormonelog.app.feature.common.Fmt
+import com.hormonelog.app.feature.common.p4Headline
 import com.hormonelog.app.state.*
 import com.hormonelog.core.domain.*
+import com.hormonelog.core.modelengine.DoseExclusion
+import com.hormonelog.core.modelengine.ExcludedDose
+import com.hormonelog.core.modelengine.P4Reading
+import com.hormonelog.core.modelengine.P4Status
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -45,11 +50,95 @@ class ProgesteroneIntegrationTest {
         assertEquals(1, model.doses.size)
     }
 
-    @Test fun p4GapNamesTheOldRecordThatBlocksTheWindow() {
-        val blocker = dose(now.minusSeconds(86400L * 60), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
-        val curves = Analysis.curves(listOf(p4, blocker), emptyList(), emptyList(), GonadalStatus.DECLINED, now, now.minusSeconds(86400), now, SEOUL)
+    @Test fun aSixtyDayOldUnsupportedRecordNoLongerBlanksTheWindowAndStaysOnRecord() {
+        val old = dose(now.minusSeconds(86400L * 60), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
+        val curves = Analysis.curves(listOf(p4, old), emptyList(), emptyList(), GonadalStatus.DECLINED, now, now.minusSeconds(86400), now, SEOUL)
+        assertNotNull(curves.p4)
+        assertTrue(curves.p4Blockers.isEmpty())
+        assertEquals(listOf(ExcludedDose(old, DoseExclusion.OUTSIDE_INFLUENCE)), curves.p4Excluded)
+    }
+
+    @Test fun aRecentUnsupportedRecordStillBlanksTheWindowAndIsNamedWithoutAskingToDeleteIt() {
+        val blocker = dose(now.minusSeconds(3600L * 30), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
+        val doses = listOf(p4, blocker)
+        val curves = Analysis.curves(doses, emptyList(), emptyList(), GonadalStatus.DECLINED, now, now.minusSeconds(86400), now, SEOUL)
         assertNull(curves.p4)
         assertEquals(listOf(blocker), curves.p4Blockers)
+        val moment = Analysis.p4Moment(curves, doses, now)
+        assertEquals(P4Status.UNSUPPORTED_DOSE, moment.status)
+        assertNull(moment.point)
+        val words = p4Headline(moment, Fmt(SEOUL, true, now))
+        assertTrue(words.contains("400"))
+        assertTrue(words.contains("그대로"))
+        assertFalse(words.contains("지우"))
+        assertFalse(words.contains("고치"))
+    }
+
+    @Test fun aBlankedCurveStillShowsItsMeasuredP4Point() {
+        val blocker = dose(now.minusSeconds(3600L * 30), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
+        val l = lab(now).copy(analytes = listOf(LabAnalyteValue(Analyte.PROGESTERONE, 3.0, "ng/mL", 3.0)))
+        val doses = listOf(p4, blocker)
+        val curves = Analysis.curves(doses, emptyList(), listOf(l), GonadalStatus.DECLINED, now, now.minusSeconds(86400), now, SEOUL)
+        val model = chartModelFor(HormoneSeries.P4, curves, doses, listOf(l), now.minusSeconds(86400), now, now, true)
+        assertNull(model.curve)
+        assertEquals(1, model.labs.size)
+    }
+
+    @Test fun aNumberFromADoseAfterAPastWindowIsNotShownOnThatWindow() {
+        val pastWindowEnd = now.minusSeconds(3600L * 12)
+        val later = dose(now.minusSeconds(3600L * 2), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 200.0)
+        val doses = listOf(later)
+        val curves = Analysis.curves(doses, emptyList(), emptyList(), GonadalStatus.DECLINED, now, pastWindowEnd.minusSeconds(86400), pastWindowEnd, SEOUL)
+        assertNull(curves.p4)
+        val moment = Analysis.p4Moment(curves, doses, now)
+        assertEquals(P4Status.DOSE_OUTSIDE_VIEW, moment.status)
+        assertNull(moment.point)
+    }
+
+    @Test fun aDecayedResidueSaysItIsNotTheBaselineP4() {
+        val old = dose(now.minusSeconds(3600L * 80), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 200.0)
+        val moment = Analysis.p4Reading(listOf(old), now)
+        assertEquals(P4Status.DECAYED_TO_NEAR_ZERO, moment.status)
+        assertTrue(p4Headline(moment, Fmt(SEOUL, true, now)).contains("기저 P4는 포함하지 않아요"))
+    }
+
+    @Test fun thirteenRecordedP4DosesEachHaveAVisibleReasonForTheirFlow() {
+        fun flow(doses: List<DoseEvent>): Pair<Curves, P4Reading> {
+            val curves = Analysis.curves(doses, emptyList(), emptyList(), GonadalStatus.DECLINED, now, now.minusSeconds(86400), now, SEOUL)
+            return curves to Analysis.p4Moment(curves, doses, now)
+        }
+        fun oral200(hoursFromNow: Long, status: DoseStatus = DoseStatus.ADMINISTERED) =
+            dose(now.minusSeconds(hoursFromNow * 3600), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 200.0).copy(status = status)
+        val newestTwoHoursAgo = (0 until 13).map { oral200(2L + it * 24L) }
+        val newestThreeDaysAgo = (0 until 13).map { oral200(72L + it * 24L) }
+
+        flow(newestTwoHoursAgo).let { (curves, moment) ->
+            assertNotNull("drawn", curves.p4)
+            assertEquals(P4Status.AVAILABLE, moment.status)
+        }
+        flow(newestThreeDaysAgo).let { (curves, moment) ->
+            assertNotNull("drawn as residue only", curves.p4)
+            assertEquals(P4Status.DECAYED_TO_NEAR_ZERO, moment.status)
+        }
+        flow(newestTwoHoursAgo.map { it.copy(status = DoseStatus.SKIPPED) }).let { (curves, moment) ->
+            assertNull("nothing taken, so no curve", curves.p4)
+            assertEquals(P4Status.NO_TAKEN_DOSE, moment.status)
+        }
+        val recent400 = dose(now.minusSeconds(5L * 3600), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
+        flow(newestTwoHoursAgo + recent400).let { (curves, moment) ->
+            assertNull(curves.p4)
+            assertEquals(listOf(recent400), curves.p4Blockers)
+            assertEquals(P4Status.UNSUPPORTED_DOSE, moment.status)
+        }
+        val old400 = dose(now.minusSeconds(90L * 86400), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
+        flow(newestTwoHoursAgo + old400).let { (curves, _) ->
+            assertNotNull(curves.p4)
+            assertEquals(listOf(ExcludedDose(old400, DoseExclusion.OUTSIDE_INFLUENCE)), curves.p4Excluded)
+        }
+        flow((0 until 13).map { oral200(-(1L + it * 24L)) }).let { (curves, moment) ->
+            assertNull(curves.p4)
+            assertEquals(P4Status.DOSE_OUTSIDE_VIEW, moment.status)
+        }
     }
 
     @Test fun p4DoesNotMoveEstrogenCycleOrCalibrationAndP4LabsAppearInTimeline() {

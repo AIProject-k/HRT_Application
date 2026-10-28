@@ -12,6 +12,7 @@ import com.hormonelog.core.domain.LabResult
 import com.hormonelog.core.domain.RecordSource
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.allowedRoutes
+import com.hormonelog.core.domain.allowedUnits
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -29,6 +30,12 @@ enum class SkipReason {
     BAD_AMOUNT,
     BAD_COMBINATION,
     NO_VALUE,
+    /** Not a unit this app records (mL, tablet, IU, bare µg, free text). Never read as mg. */
+    INVALID_UNIT,
+    /** A real unit that this route cannot carry (mg/day for an oral dose, mg for a patch). */
+    UNIT_ROUTE_MISMATCH,
+    /** No unit, or a legacy unit the app no longer writes. Held for the user rather than guessed. */
+    AMBIGUOUS_LEGACY_UNIT,
 }
 
 /** [line] is 1-based and counts the header, so it matches what a spreadsheet shows. */
@@ -80,24 +87,22 @@ object CsvIo {
                         val drug = parseDrug(col("drug"))
                         val route = parseRoute(col("route"))
                         val amount = col("amount").toDoubleOrNull()
+                        val read = readUnit(col("unit"))
                         val reason = when {
                             at == null -> SkipReason.BAD_DATE
                             drug == null -> SkipReason.UNKNOWN_DRUG
                             route == null -> SkipReason.UNKNOWN_ROUTE
                             amount == null || !amount.isFinite() || amount <= 0.0 || amount > AMOUNT_MAX -> SkipReason.BAD_AMOUNT
                             route !in drug.allowedRoutes -> SkipReason.BAD_COMBINATION
+                            read == UnitRead.Unrecognised -> SkipReason.INVALID_UNIT
+                            read is UnitRead.Known && read.unit == DoseUnit.PATCH -> SkipReason.AMBIGUOUS_LEGACY_UNIT
+                            read is UnitRead.Known && read.unit !in route.allowedUnits -> SkipReason.UNIT_ROUTE_MISMATCH
+                            // Blank means nothing for oral or injected doses, so it is held. A patch has one unit only.
+                            read == UnitRead.Blank && route != Route.PATCH -> SkipReason.AMBIGUOUS_LEGACY_UNIT
                             else -> null
                         }
                         if (reason != null) { skipped += SkippedRow(lineNo, reason); continue }
-                        // A patch is rated in µg/day and nothing else is; a unit that does not fit the
-                        // route is the file's mistake, not a different dose.
-                        val unit = parseUnit(col("unit")).let {
-                            when {
-                                route == Route.PATCH && it == DoseUnit.MG -> DoseUnit.UG_PER_DAY
-                                route != Route.PATCH && it != DoseUnit.MG -> DoseUnit.MG
-                                else -> it
-                            }
-                        }
+                        val unit = (read as? UnitRead.Known)?.unit ?: DoseUnit.UG_PER_DAY
                         doses += DoseEvent(
                             id = UUID.randomUUID(),
                             occurredAt = at!!,
@@ -285,11 +290,20 @@ object CsvIo {
         else -> null
     }
 
-    private fun parseUnit(s: String): DoseUnit = when (s.trim().lowercase()) {
-        "mg_per_day", "mg/day", "mg/일" -> DoseUnit.MG_PER_DAY
-        "ug_per_day", "ug/day", "µg/day", "µg/일", "mcg/day" -> DoseUnit.UG_PER_DAY
-        "patch", "매" -> DoseUnit.PATCH
-        else -> DoseUnit.MG
+    /** What the unit column said. Only case and spacing are normalised; nothing is guessed. */
+    private sealed interface UnitRead {
+        data class Known(val unit: DoseUnit) : UnitRead
+        data object Blank : UnitRead
+        data object Unrecognised : UnitRead
+    }
+
+    private fun readUnit(s: String): UnitRead = when (s.trim().lowercase().replace(Regex("\\s+"), "")) {
+        "" -> UnitRead.Blank
+        "mg" -> UnitRead.Known(DoseUnit.MG)
+        "mg_per_day", "mg/day", "mg/일" -> UnitRead.Known(DoseUnit.MG_PER_DAY)
+        "ug_per_day", "ug/day", "µg/day", "μg/day", "µg/일", "μg/일", "mcg/day" -> UnitRead.Known(DoseUnit.UG_PER_DAY)
+        "patch", "매" -> UnitRead.Known(DoseUnit.PATCH)
+        else -> UnitRead.Unrecognised
     }
 
     private fun parseStatus(s: String): DoseStatus = when (s.trim().lowercase()) {

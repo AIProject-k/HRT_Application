@@ -10,6 +10,7 @@ import com.hormonelog.core.domain.LabResult
 import com.hormonelog.core.domain.RecordSource
 import com.hormonelog.core.domain.Regimen
 import com.hormonelog.core.domain.isEstrogen
+import com.hormonelog.core.evidence.MedroxyprogesteroneEvidence
 import com.hormonelog.core.evidence.EvidenceBundleV1
 import com.hormonelog.core.modelengine.CalibrationEngine
 import com.hormonelog.core.modelengine.CalibrationResult
@@ -21,6 +22,11 @@ import com.hormonelog.core.modelengine.EstimatePoint
 import com.hormonelog.core.modelengine.EstimateResult
 import com.hormonelog.core.modelengine.EstimateSeries
 import com.hormonelog.core.modelengine.ExcludedDose
+import com.hormonelog.core.modelengine.MedroxyprogesteroneEngine
+import com.hormonelog.core.modelengine.ModelReason
+import com.hormonelog.core.modelengine.ModelStatus
+import com.hormonelog.core.modelengine.P4Reading
+import com.hormonelog.core.modelengine.P4Status
 import com.hormonelog.core.modelengine.TtSuppressionEngine
 import java.time.Instant
 import java.time.ZoneId
@@ -40,8 +46,15 @@ data class Curves(
     val p4: EstimateSeries? = null,
     /** Oral P4 doses (recorded or planned) that stop the P4 curve; empty when the curve is drawn. */
     val p4Blockers: List<DoseEvent> = emptyList(),
+    /** Oral P4 doses outside the model that cannot reach the shown window; on record, not on the curve. */
+    val p4Excluded: List<ExcludedDose> = emptyList(),
+    /** MPA's answer for the window: a curve, or the reason there is none. Independent of E2, Total T and P4. */
+    val mpaStatus: ModelStatus = ModelStatus.Unavailable(ModelReason.NO_DATA, MedroxyprogesteroneEvidence.stage),
+    /** MPA doses still expected after now, for the MPA tab's hollow ticks. Kept out of every other plan. */
+    val mpaPlanned: List<DoseEvent> = emptyList(),
 ) {
     val hasE2: Boolean get() = e2 != null
+    val mpaSeries: EstimateSeries? get() = (mpaStatus as? ModelStatus.Available)?.series
 }
 
 /** The calculations every screen shares. All pure: the same records always give the same answer. */
@@ -71,9 +84,17 @@ object Analysis {
     /** MPA has no curve yet; kept out of the E2 and Total T models, where it would read as a flat baseline. */
     private fun List<DoseEvent>.withoutMpa(): List<DoseEvent> = filter { it.drug != Drug.MEDROXYPROGESTERONE_ACETATE }
 
-    /** Doses a plan still expects after [now], as events the model can use. */
+    /** Doses a plan still expects after [now], as events the model can use. MPA has its own plan, see [plannedMpa]. */
     fun planned(regimens: List<Regimen>, doses: List<DoseEvent>, now: Instant, until: Instant, zone: ZoneId): List<DoseEvent> =
-        regimens.filter { it.active && it.drug != Drug.MEDROXYPROGESTERONE_ACETATE }.flatMap { r ->
+        expected(regimens.filter { it.drug != Drug.MEDROXYPROGESTERONE_ACETATE }, doses, now, until, zone)
+
+    /** MPA's own planned doses. They are a schedule, not a curve, and stay out of the E2, Total T and P4 plans. */
+    fun plannedMpa(regimens: List<Regimen>, doses: List<DoseEvent>, now: Instant, until: Instant, zone: ZoneId): List<DoseEvent> =
+        expected(regimens.filter { it.drug == Drug.MEDROXYPROGESTERONE_ACETATE }, doses, now, until, zone)
+
+    /** Planned events carry [RecordSource.SCHEDULE]; they are not records of intake. */
+    private fun expected(regimens: List<Regimen>, doses: List<DoseEvent>, now: Instant, until: Instant, zone: ZoneId): List<DoseEvent> =
+        regimens.filter { it.active }.flatMap { r ->
             Regimen.expected(r, now, until, doses, zone).map { at ->
                 DoseEvent(
                     id = UUID.nameUUIDFromBytes("${r.id}@${at.toEpochMilli()}".toByteArray()),
@@ -91,6 +112,15 @@ object Analysis {
                 )
             }
         }.sortedBy { it.occurredAt }
+
+    /** Shipped switched off, with no validated parameters. MPA records never feed the E2, Total T or P4 models. */
+    private val mpaEngine = MedroxyprogesteroneEngine(MedroxyprogesteroneEvidence.validated, MedroxyprogesteroneEvidence.stage)
+
+    /** MPA's own answer over the span its records cover, up to [now]. */
+    fun mpaStatus(doses: List<DoseEvent>, now: Instant): ModelStatus {
+        val earliest = doses.filter { it.drug == Drug.MEDROXYPROGESTERONE_ACETATE }.minOfOrNull { it.occurredAt }
+        return mpaEngine.curve(doses, from = (earliest ?: now).coerceAtMost(now), to = now)
+    }
 
     /**
      * Both curves over [from]..[to]: real doses up to [now], planned ones after it.
@@ -110,11 +140,14 @@ object Analysis {
     ): Curves {
         val taken = doses.withoutMpa().filter { it.status.wasTaken }
         val planned = planned(regimens, doses, now, to, zone)
+        val mpa = mpaEngine.curve(doses, from, to, samples)
+        val mpaPlanned = plannedMpa(regimens, doses, now, to, zone)
         if (taken.isEmpty() && planned.isEmpty()) {
-            return Curves(null, null, emptyList(), status == GonadalStatus.DECLINED, calibration, emptyList())
+            return Curves(null, null, emptyList(), status == GonadalStatus.DECLINED, calibration, emptyList(), mpaStatus = mpa, mpaPlanned = mpaPlanned)
         }
         val all = taken + planned
         val p4Doses = taken.filter { !it.occurredAt.isAfter(now) } + planned
+        val p4Curve = p4Engine.curve(p4Doses, from, to, samples) as? EstimateResult.Available
         val e2 = e2Engine.curve(all, from, to, samples = samples, adjustments = calibration.adjustments)
         val tt = ttEngine.curve(
             all, from, to, status, samples = samples,
@@ -127,12 +160,29 @@ object Analysis {
             ttHidden = status == GonadalStatus.DECLINED,
             calibration = calibration,
             planned = planned,
-            p4 = (p4Engine.curve(p4Doses, from, to, samples) as? EstimateResult.Available)?.series,
-            p4Blockers = p4Engine.blockers(p4Doses, to),
+            p4 = p4Curve?.series,
+            p4Blockers = p4Engine.blockers(p4Doses, from, to),
+            p4Excluded = p4Curve?.excluded.orEmpty(),
+            mpaStatus = mpa,
+            mpaPlanned = mpaPlanned,
         )
     }
 
     fun p4At(doses: List<DoseEvent>, at: Instant): EstimatePoint? = p4Engine.estimateAt(doses, at)
+
+    fun p4Reading(doses: List<DoseEvent>, at: Instant): P4Reading = p4Engine.readingAt(doses, at)
+
+    /**
+     * What the P4 chart says at [at], for the window [curves] was built for. A blanked window gives the records that
+     * blank it. A window that draws no curve gives no number, so the line, the graph and the summary cannot disagree.
+     */
+    fun p4Moment(curves: Curves?, doses: List<DoseEvent>, at: Instant): P4Reading {
+        if (curves == null) return P4Reading(P4Status.PENDING_CALCULATION)
+        if (curves.p4 == null && curves.p4Blockers.isNotEmpty()) return P4Reading(p4Engine.blockedStatus(curves.p4Blockers), blockers = curves.p4Blockers)
+        val reading = p4Engine.readingAt(doses, at)
+        // A number with no drawn curve means every taken dose lies after the window.
+        return if (curves.p4 == null && reading.point != null) P4Reading(P4Status.DOSE_OUTSIDE_VIEW) else reading
+    }
 
     /** Median and interval of E2 right now (or at [at]), calibrated; null with no usable dose. */
     fun e2At(doses: List<DoseEvent>, regimens: List<Regimen>, calibration: CalibrationResult, at: Instant, now: Instant, zone: ZoneId): EstimatePoint? {

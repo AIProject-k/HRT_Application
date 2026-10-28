@@ -3,7 +3,7 @@ package com.hormonelog.core.modelengine
 import com.hormonelog.core.domain.DoseEvent
 import java.time.Instant
 
-enum class Hormone { E2, TOTAL_T, P4 }
+enum class Hormone { E2, TOTAL_T, P4, MPA }
 
 data class EstimatePoint(
     val at: Instant,
@@ -34,6 +34,27 @@ enum class DoseExclusion {
 
     /** A patch whose strength (µg/day) is not known. */
     PATCH_STRENGTH_MISSING,
+
+    /** Oral P4 outside the model's range that cannot reach the shown window above display precision. */
+    OUTSIDE_INFLUENCE,
+
+    /** The dose was skipped, so nothing entered the body. */
+    NOT_TAKEN,
+
+    /** Dated after the window it is drawn in, so it cannot have acted yet. */
+    FUTURE_DOSE,
+
+    /** The amount is missing, zero, negative, or not finite. */
+    INVALID_AMOUNT,
+
+    /** The date is outside the range a personal record can have. */
+    ABNORMAL_DATE,
+
+    /** The unit cannot be converted to milligrams. */
+    UNSUPPORTED_UNIT,
+
+    /** The amount is above the dose range where linearity was checked. */
+    OUTSIDE_LINEAR_RANGE,
 }
 
 data class ExcludedDose(val dose: DoseEvent, val reason: DoseExclusion)
@@ -49,6 +70,9 @@ enum class ModelUnavailableReason {
     MISSING_EVIDENCE,
     NO_DATA,
     ROUTE_UNSUPPORTED,
+
+    /** A recorded dose's amount or unit is outside the model and still reaches the shown window. */
+    UNSUPPORTED_DOSE,
 
     /** The user chose not to share what the model needs (Total T without gonadal status). */
     HIDDEN_BY_USER,

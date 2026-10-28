@@ -59,6 +59,8 @@ class ChartModel(
     /** True for Total T (blue); false for E2 (teal). */
     val isTotalT: Boolean,
     val isP4: Boolean = false,
+    /** True for MPA (violet). MPA has no validated curve, so its axis carries no numbers. */
+    val isMpa: Boolean = false,
     /** Gray reference band in the units of the chart, or null. */
     val guide: ClosedFloatingPointRange<Double>? = null,
 )
@@ -81,8 +83,8 @@ fun EstimateChart(
 ) {
     val c = Hl.colors
     val measurer = rememberTextMeasurer()
-    val accent = if (model.isP4) c.orange else if (model.isTotalT) c.blue else c.teal
-    val soft = if (model.isP4) c.orangeSoft else if (model.isTotalT) c.blueSoft else c.tealSoft
+    val accent = if (model.isMpa) c.violet else if (model.isP4) c.orange else if (model.isTotalT) c.blue else c.teal
+    val soft = if (model.isMpa) c.violetSoft else if (model.isP4) c.orangeSoft else if (model.isTotalT) c.blueSoft else c.tealSoft
     val w = if (compact) 300f else 320f
     val h = if (compact) 96f else 210f
     val gestures = if (onScrub == null || compact) Modifier else Modifier
@@ -127,8 +129,8 @@ fun renderChart(context: Context, model: ChartModel, colors: HlColors, fmt: Fmt,
     val bitmap = ImageBitmap(widthPx, heightPx)
     val density = Density(density = widthPx / w, fontScale = 1f)
     val measurer = TextMeasurer(createFontFamilyResolver(context), density, LayoutDirection.Ltr)
-    val accent = if (model.isP4) colors.orange else if (model.isTotalT) colors.blue else colors.teal
-    val soft = if (model.isP4) colors.orangeSoft else if (model.isTotalT) colors.blueSoft else colors.tealSoft
+    val accent = if (model.isMpa) colors.violet else if (model.isP4) colors.orange else if (model.isTotalT) colors.blue else colors.teal
+    val soft = if (model.isMpa) colors.violetSoft else if (model.isP4) colors.orangeSoft else if (model.isTotalT) colors.blueSoft else colors.tealSoft
     CanvasDrawScope().draw(density, LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(bitmap), Size(widthPx.toFloat(), heightPx.toFloat())) {
         drawChart(model, colors, accent, soft, measurer, fmt, compact, null, w, h)
     }
@@ -173,8 +175,8 @@ private fun DrawScope.drawChart(
     fun xOf(t: Instant): Float = (pl + ((t.toEpochMilli() - t0) / (t1 - t0)) * iw).toFloat()
 
     val points = m.curve?.points.orEmpty().filter { it.at.toEpochMilli() in m.from.toEpochMilli()..m.to.toEpochMilli() }
-    val unit = if (m.isP4) 1.0 else if (m.isTotalT) 20.0 else 50.0
-    var top = points.maxOfOrNull { it.upper } ?: (if (m.isP4) 5.0 else if (m.isTotalT) 100.0 else 250.0)
+    val unit = if (m.isP4 || m.isMpa) 1.0 else if (m.isTotalT) 20.0 else 50.0
+    var top = points.maxOfOrNull { it.upper } ?: (if (m.isP4 || m.isMpa) 5.0 else if (m.isTotalT) 100.0 else 250.0)
     m.labs.filter { it.at in m.from..m.to }.forEach { top = max(top, it.value) }
     m.guide?.let { if (!compact) top = max(top, it.endInclusive) }
     val ymax = max(unit, ceil(top * 1.08 / unit) * unit)
@@ -186,8 +188,11 @@ private fun DrawScope.drawChart(
         // grid + y labels
         for (v in listOf(0.0, ymax / 2, ymax)) {
             drawLine(c.line, px(pl, yOf(v)), px(vbW - pr, yOf(v)), strokeWidth = 1f)
-            val label = measurer.measure(if (m.isP4) com.hormonelog.app.state.plainNumber(v) else v.toInt().toString(), labelStyle)
-            drawText(label, topLeft = Offset(px(pl - 5f, 0f).x - label.size.width, px(0f, yOf(v)).y - label.size.height / 2f))
+            // MPA has no validated curve, so its axis carries no numbers.
+            if (!m.isMpa) {
+                val label = measurer.measure(if (m.isP4) com.hormonelog.app.state.plainNumber(v) else v.toInt().toString(), labelStyle)
+                drawText(label, topLeft = Offset(px(pl - 5f, 0f).x - label.size.width, px(0f, yOf(v)).y - label.size.height / 2f))
+            }
         }
         m.guide?.let { g ->
             drawRect(c.guide, topLeft = px(pl, yOf(g.endInclusive)), size = Size(iw * sx, (yOf(g.start) - yOf(g.endInclusive)) * sy))

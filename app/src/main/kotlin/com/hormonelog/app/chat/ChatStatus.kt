@@ -2,13 +2,16 @@ package com.hormonelog.app.chat
 
 import com.hormonelog.app.analysis.Analysis
 import com.hormonelog.app.analysis.HomeLogic
+import com.hormonelog.app.feature.common.Fmt
 import com.hormonelog.app.feature.common.doseSummary
+import com.hormonelog.app.feature.common.p4NoNumberWords
 import com.hormonelog.app.state.AppState
 import com.hormonelog.app.state.plainNumber
 import com.hormonelog.core.domain.Analyte
 import com.hormonelog.core.domain.GonadalStatus
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.modelengine.EstimatePoint
+import com.hormonelog.core.modelengine.P4Status
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -41,7 +44,7 @@ object ChatStatus {
         val calibration = Analysis.calibrate(doses, labs, status)
         val e2 = Analysis.e2At(doses, s.regimens, calibration, now, now, zone)
         val tt = Analysis.ttAt(doses, labs, status, calibration, now)
-        val p4 = Analysis.p4At(doses, now)
+        val p4 = Analysis.p4Reading(doses, now)
         val last = doses.filter { it.status.wasTaken }.maxByOrNull { it.occurredAt }
         val next = HomeLogic.nextDose(s.regimens, doses, now, zone)
         val injection = HomeLogic.nextDose(s.regimens.filter { it.route in setOf(Route.IM_INJECTION, Route.SC_INJECTION) }, doses, now, zone)
@@ -50,8 +53,8 @@ object ChatStatus {
             appendLine("\n현재 추정 · 실측 아님")
             appendLine(estimate("E2", e2, "pg/mL"))
             appendLine(if (status == GonadalStatus.DECLINED) "Total T: 비공개 설정으로 표시하지 않음" else estimate("Total T", tt, "ng/dL"))
-            appendLine(p4?.let { "P4 복용분: ${String.format(Locale.ROOT, "%.2f", it.median)} ng/mL · 체내 총농도 아님" }
-                ?: "P4 복용분: 추정 불가 · 복용 기록 없음 또는 경구 미분화 100–300 mg 지원 범위 밖")
+            appendLine(p4.point?.takeIf { p4.status == P4Status.AVAILABLE }?.let { "P4 복용분: ${String.format(Locale.ROOT, "%.2f", it.median)} ng/mL · 체내 총농도 아님" }
+                ?: "P4 복용분: 추정 불가 · ${p4NoNumberWords(p4.status, p4.blockers, Fmt(zone, s.settings.clock24, now))}")
             appendLine("문헌 모델 참고값이며 지원하는 투약만 반영해요. P4의 제품·식사 조건과 개인별 불확실성은 반영하지 않아요.")
             appendLine("\n최근 실제 투약")
             appendLine(last?.let { "${time(it.occurredAt, zone)} · ${doseSummary(it.drug, it.route, it.amountEntered, it.enteredUnit)}" } ?: "투약 기록 없음")

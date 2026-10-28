@@ -200,6 +200,48 @@ class CsvIoTest {
         assertEquals(DoseUnit.UG_PER_DAY, r.doses.single().enteredUnit)
     }
 
+    /** Pads a dose row to the header's 15 columns, so the unit is always the 6th field. */
+    private fun doseRow(datetime: String, drug: String, route: String, amount: String, unit: String) =
+        "dose,$datetime,$drug,$route,$amount,$unit" + ",".repeat(9)
+
+    @Test
+    fun aUnitThatIsNotMgIsRefusedInsteadOfBeingReadAsMg() {
+        for (unit in listOf("mL", "ml", "tablet", "unknown", "IU", "μg", "정", "알")) {
+            val r = CsvIo.parse("$header\n" + doseRow("2026-09-03T21:00", "provera", "oral", "10", unit), seoul)
+            assertTrue("read $unit as a dose", r.doses.isEmpty())
+            assertEquals("unit $unit", listOf(SkipReason.INVALID_UNIT), r.skippedRows.map { it.reason })
+        }
+    }
+
+    @Test
+    fun mgIsAcceptedWhateverCaseAndSpacingItComesIn() {
+        val r = CsvIo.parse("$header\n" + doseRow("2026-09-03T21:00", "provera", "oral", "10", " MG "), seoul)
+        assertEquals(DoseUnit.MG, r.doses.single().enteredUnit)
+        assertEquals(10.0, r.doses.single().normalizedMilligrams!!, 0.0)
+    }
+
+    @Test
+    fun aUnitTheRouteCannotCarryIsRefusedNotConverted() {
+        val r = CsvIo.parse(
+            "$header\n" +
+                doseRow("2026-09-03T21:00", "provera", "oral", "10", "mg/day") + "\n" +
+                doseRow("2026-09-04T09:00", "estradiol_patch", "patch", "50", "mg"),
+            seoul,
+        )
+        assertTrue(r.doses.isEmpty())
+        assertEquals(
+            listOf(SkipReason.UNIT_ROUTE_MISMATCH, SkipReason.UNIT_ROUTE_MISMATCH),
+            r.skippedRows.map { it.reason },
+        )
+    }
+
+    @Test
+    fun aBlankUnitOnAnOralDoseIsHeldNotAssumedToBeMg() {
+        val r = CsvIo.parse("$header\n" + doseRow("2026-09-03T21:00", "provera", "oral", "10", ""), seoul)
+        assertTrue(r.doses.isEmpty())
+        assertEquals(listOf(SkipReason.AMBIGUOUS_LEGACY_UNIT), r.skippedRows.map { it.reason })
+    }
+
     @Test
     fun importedRecordsAreMarkedAsImported() {
         val r = CsvIo.parse(sample, seoul)

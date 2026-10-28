@@ -2,6 +2,7 @@ package com.hormonelog.app.feature.common
 
 import com.hormonelog.app.state.plainNumber
 import com.hormonelog.core.data.SkipReason
+import com.hormonelog.app.analysis.Curves
 import com.hormonelog.core.domain.Assay
 import com.hormonelog.core.domain.DoseEvent
 import com.hormonelog.core.domain.DoseStatus
@@ -19,6 +20,11 @@ import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.Telehealth
 import com.hormonelog.core.modelengine.DoseExclusion
 import com.hormonelog.core.modelengine.LabExclusion
+import com.hormonelog.core.modelengine.ModelReason
+import com.hormonelog.core.modelengine.ModelStatus
+import com.hormonelog.core.modelengine.P4_DISPLAY_PRECISION_NG_ML
+import com.hormonelog.core.modelengine.P4Reading
+import com.hormonelog.core.modelengine.P4Status
 import java.time.DayOfWeek
 
 /** Korean display words for domain values; the one place the app's vocabulary lives. */
@@ -223,7 +229,53 @@ val DoseExclusion.reasonText: String
         DoseExclusion.NO_MODEL -> "근거가 부족해 곡선을 그리지 않아요"
         DoseExclusion.UNSUPPORTED_COMBINATION -> "약물과 경로 조합을 계산할 수 없어요"
         DoseExclusion.PATCH_STRENGTH_MISSING -> "패치 규격(µg/일)이 없어요"
+        DoseExclusion.OUTSIDE_INFLUENCE -> "지원 밖 용량이지만 이 구간에 영향이 없어 뺐어요 · 기록은 그대로 있어요"
+        DoseExclusion.NOT_TAKEN -> "건너뛴 복용이라 약이 들어가지 않은 것으로 봐요"
+        DoseExclusion.FUTURE_DOSE -> "아직 오지 않은 시점의 복용이라 이 구간에 넣지 않아요"
+        DoseExclusion.INVALID_AMOUNT -> "용량이 없거나 0 이하이거나 무한대라서 계산하지 않아요"
+        DoseExclusion.ABNORMAL_DATE -> "날짜가 기록 가능한 범위를 벗어나 계산하지 않아요"
+        DoseExclusion.UNSUPPORTED_UNIT -> "mg가 아닌 단위라 계산할 수 없어요"
+        DoseExclusion.OUTSIDE_LINEAR_RANGE -> "검증된 용량 범위 밖이라 합산하지 않아요"
     }
+
+/** The P4 chart's line for one moment: the drug-only number when there is one, otherwise the reason. */
+fun p4Headline(reading: P4Reading, fmt: Fmt): String {
+    val point = reading.point
+    return if (point != null && reading.status == P4Status.AVAILABLE) {
+        "예상 P4 복용분 ${"%.2f".format(point.median)} ng/mL"
+    } else {
+        p4NoNumberWords(reading.status, reading.blockers, fmt)
+    }
+}
+
+/** Words for a P4 moment without a drug-only number. The records stay on file; only the estimate is withheld. */
+fun p4NoNumberWords(status: P4Status, blockers: List<DoseEvent>, fmt: Fmt): String = when (status) {
+    P4Status.AVAILABLE -> "복용분 계산값이 있어요"
+    P4Status.DECAYED_TO_NEAR_ZERO -> "복용분 잔여 기여가 $P4_DISPLAY_PRECISION_NG_ML ng/mL 미만이에요 · 체내 기저 P4는 포함하지 않아요"
+    P4Status.NO_RECORDED_DOSE -> "경구 P4 복용 기록이 없어요 · 경구 미분화 100–300 mg 기록이 있으면 그려요"
+    P4Status.NO_TAKEN_DOSE -> "P4 기록이 모두 건너뜀이라 복용분을 그리지 않아요"
+    P4Status.DOSE_OUTSIDE_VIEW -> "이 시점에 반영된 복용 기록이 없어요 · 첫 기록은 그 뒤에 있어요"
+    P4Status.UNSUPPORTED_ROUTE, P4Status.UNSUPPORTED_DOSE -> {
+        val named = blockers.take(2).joinToString(" · ") { "${fmt.date(it.occurredAt)} ${it.summary()}" }
+        val more = if (blockers.size > 2) " 외 ${blockers.size - 2}건" else ""
+        "지원 밖 P4 기록이 이 구간을 막고 있어요: $named$more · 기록은 그대로 두고 복용분만 보류해요"
+    }
+    P4Status.MISSING_EVIDENCE -> "근거가 부족해 P4 복용분을 계산하지 않아요"
+    P4Status.NUMERIC_ERROR -> "계산 결과가 올바르지 않아 표시하지 않아요"
+    P4Status.PENDING_CALCULATION -> "P4 복용분을 계산하는 중이에요"
+}
+
+/** The MPA tab's line. Each reason gets its own sentence and no number, so an empty MPA tab is never unexplained. */
+fun mpaHeadline(curves: Curves?): String = when (val status = curves?.mpaStatus) {
+    null -> "MPA 농도를 계산하는 중이에요"
+    is ModelStatus.Available -> "MPA 곡선을 계산했어요 · 체내 총농도 아님"
+    is ModelStatus.Unavailable -> when (status.reason) {
+        ModelReason.NO_DATA -> "MPA 복용 기록이 없어요"
+        ModelReason.UNSUPPORTED_RECORDS -> "지원 밖 MPA 기록만 있어요 · 기록은 그대로 두고 곡선은 그리지 않아요"
+        ModelReason.EVIDENCE_INSUFFICIENT -> "MPA 농도는 근거 검증 중이라 숫자를 보이지 않아요 · 복용 기록은 정상 저장돼요"
+        ModelReason.MODEL_DISABLED -> "이 버전은 MPA 농도 예측을 아직 제공하지 않아요 · 복용 기록은 정상 저장돼요"
+    }
+}
 
 /** Why a lab did not shape the curve. */
 val LabExclusion.text: String
@@ -273,6 +325,9 @@ val SkipReason.text: String
         SkipReason.BAD_AMOUNT -> "용량이 0이거나 숫자가 아님"
         SkipReason.BAD_COMBINATION -> "약물과 경로 조합이 맞지 않음"
         SkipReason.NO_VALUE -> "E2·Total T·P4 값이 없거나 숫자 형식이 잘못됨"
+        SkipReason.INVALID_UNIT -> "기록할 수 없는 단위(mg 이외)라서 보류함"
+        SkipReason.UNIT_ROUTE_MISMATCH -> "이 투여 경로에 맞지 않는 단위라서 보류함"
+        SkipReason.AMBIGUOUS_LEGACY_UNIT -> "단위가 없거나 예전 단위라서 추측하지 않고 보류함"
     }
 
 val Symptom.label: String
