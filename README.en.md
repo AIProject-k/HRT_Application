@@ -15,7 +15,7 @@ pharmacokinetic models in the published literature; log a real lab value and it
 **calibrates that curve to your own body**. The more lab values you add, the more
 personalised the curve becomes.
 
-- **Original records stay on the device** — regular logging works offline without an account. Chat uses Kotlin rules and an optionally installed Qwen3-0.6B model locally; only model installation requires internet
+- **Original records stay on the device** — regular logging works offline without an account. Chat uses Kotlin rules and an optionally installed model (Qwen3-0.6B or Gemma 4 E2B) locally; only model installation requires internet
 - **Only draws what it can source** — a route gets a curve only when every parameter has provenance; the rest (gel) is left off the curve, and the app says why
 - **Never blends estimates with measurements** — an estimate is a teal band, a measurement a yellow diamond, always
 
@@ -36,7 +36,7 @@ chat input is processed on the device, without an external AI service.
 
 ## Features
 
-- **Optional offline model** — open model management in chat to install the pinned Qwen3-0.6B dynamic INT4 artifact (344,671,744 bytes). Download supports resume, cancel/retry, byte-count and SHA-256 verification, and deletion. Models stay in private no-backup storage, outside APKs and medical backups. Termux, Ubuntu and Claude accounts are not required. Basic queries and explicit single-dose forms work without the model.
+- **Optional offline model** — open model management in chat to install the pinned Qwen3-0.6B dynamic INT4 artifact (344,671,744 bytes). Download supports resume, cancel/retry, byte-count and SHA-256 verification, and deletion. Models stay in private no-backup storage, outside APKs and medical backups. Qwen3-0.6B is the default. Gemma 4 E2B (about 2.6 GB) can be chosen on the same screen. Termux, Ubuntu and Claude accounts are not required. Basic queries and explicit single-dose forms work without the model.
 - **Local chat (experimental)** — Kotlin rules handle simple commands first. Other active requests use LiteRT-LM 0.18.0 on CPU. Strict JSON parsing feeds the existing literal-evidence validation, storage acknowledgements, batch logging, learned memories and undo. Missing exact times prompt for clarification. Model-authored medical advice is not used. Complex Korean extraction and device performance still need broader validation.
 - **Legacy adapter cleanup and settings compatibility** — the old external execution adapter, installer scripts and APK assets build task have been removed. Older settings and backups ignore the retired model-selection key while retaining other preferences and medical records. No code deletes a user's Termux installation or login files.
 - **First run** — six steps (current medication and schedule, back-filling past doses, testes, lab units, pre-HRT labs). Every step but the first can be skipped
@@ -44,6 +44,9 @@ chat input is processed on the device, without an external AI service.
 - **Dose logging** — drug, route (IM / SC injection, oral, sublingual, patch, gel), amount, time, injection site, status (taken / late / missed). A patch is logged by strength (µg/day) and change cycle
 - **Repeating schedules** — weekdays, time of day, end date. A second schedule for the same drug and route asks first, then ends the old one and starts the new one. The past doses a schedule would have produced are counted and shown before anything is recorded
 - **Lab results** — measured E2 / Total T, unit conversion (pg/mL·pmol/L, ng/dL·ng/mL·nmol/L), assay method, draw time (unknown allowed). A value far from the expectation is flagged as a possible unit mix-up before saving. The result screen shows the difference from the estimate, where the draw falls in the dosing cycle, and whether (and if not, why not) it calibrated the curve
+- **P4 dose estimate (experimental).** Logs oral micronized progesterone soft capsules at 100 to 300 mg. Home shows the current value, and the Flow screen shows a 24-hour curve with measured P4 values (ng/mL or nmol/L). The curve interpolates population means from approval documents. After 8 hours and for repeated doses, it extrapolates and adds up doses. It gives no personal body total, confidence interval, automatic calibration, or T suppression effect.
+- **P4 product and meal conditions.** Each dose, schedule, backup, and CSV row keeps the product (Utrogestan, other, or unknown) and the meal condition (fasting, after a regular meal, after a high-fat meal, or unknown). A new record does not reuse an earlier meal condition. These conditions do not change the current estimate yet.
+- **Provera (MPA) records.** Medroxyprogesterone acetate is recorded as an oral dose only. Log it from the dose form, schedules, chat (for example, 방금 프로베라 5mg 먹었어), or CSV. No MPA curve is drawn yet. Its evidence is still being checked, so the MPA tab shows the recorded and planned doses without numbers. [Evidence status](docs/evidence/README.md)
 - **Projected flow** — E2 and Total T curves from literature PK/PD parameters
   - E2: per-ester 3-compartment models (estrannaise.js), oral / sublingual one-compartment models, patch
   - Total T: E2 delayed effect compartment + Hill suppression + saturable cyproterone suppression. Using your testes status sharpens it; "prefer not to say" draws no curve
@@ -120,7 +123,7 @@ builds live in [Releases](../../releases).
 This project was **built with Anthropic Claude** — design, implementation, literature
 research, model parameter calibration, unit tests, on-device verification (Galaxy S23),
 and release were all done in conversational sessions with the coding agent **Claude Code**
-(model **Claude Sonnet 5**). Commits are tagged `Co-Authored-By: Claude Sonnet 5`.
+(models **Claude Sonnet 5.5** and **Haiku 5.5**). Commits made with its help carry `Co-Authored-By: Claude Sonnet 5.5` or `Claude Haiku 5.5`.
 
 ## Status
 
