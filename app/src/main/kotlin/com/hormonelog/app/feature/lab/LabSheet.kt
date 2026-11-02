@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.hormonelog.app.analysis.Analysis
+import com.hormonelog.app.analysis.ttUnitWarning
 import com.hormonelog.app.feature.common.DateTimePickerDialog
 import com.hormonelog.app.feature.common.Fmt
 import com.hormonelog.app.feature.common.label
@@ -49,6 +50,7 @@ import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
 import com.hormonelog.core.domain.Assay
 import com.hormonelog.core.domain.E2Unit
+import com.hormonelog.core.domain.GonadalStatus
 import com.hormonelog.core.domain.TUnit
 import java.time.Instant
 
@@ -98,6 +100,9 @@ fun LabSheet(s: AppState, fmt: Fmt, actions: LabSheetActions) {
     val drawAt = resolveDrawTime(d, now, fmt.zone)
     val morning = remember(now.epochSecond / 60) { now.atZone(fmt.zone).toLocalDate().atTime(9, 0).atZone(fmt.zone).toInstant() }
     val warning = remember(d.e2, d.e2Unit, drawAt, s.doses, s.regimens, s.labs) { unitWarning(s, d, drawAt, now, fmt.zone) }
+    val ttWarning = remember(d.tt, d.ttUnit, d.isBaseline, s.settings.gonadalStatus) {
+        ttUnitWarning(d.ttValue, d.ttUnit, d.isBaseline && s.settings.gonadalStatus != GonadalStatus.POST_ORCHIECTOMY)
+    }
     val since = remember(drawAt, s.doses) { drawAt?.let { at -> Analysis.lastEstrogenBefore(s.doses, at)?.let { (at.toEpochMilli() - it.occurredAt.toEpochMilli()) / 3_600_000.0 } } }
 
     HlSheet(onDismiss = actions.close, fillHeight = true) {
@@ -163,11 +168,21 @@ fun LabSheet(s: AppState, fmt: Fmt, actions: LabSheetActions) {
             Field(label = "Total T · 실측 · 선택", diamond = true) {
                 HlTextField(
                     value = d.tt, onValueChange = { t -> actions.edit { it.copy(tt = RecordsReducer.cleanNumber(t)) } },
-                    label = "Total T 실측값", placeholder = "검사지 숫자", error = d.ttError != null,
+                    label = "Total T 실측값", placeholder = "검사지 숫자", error = d.ttError != null || ttWarning != null,
                 )
                 if (d.ttError != null) HlFieldError(d.ttError!!)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     TUnit.entries.forEach { u -> HlChip(u.label, d.ttUnit == u, { actions.edit { it.copy(ttUnit = u) } }, minHeight = 44.dp, size = HlSize.t13, padding = chipPad, shape = RoundedCornerShape(10.dp)) }
+                }
+                if (ttWarning != null) {
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.chip)).background(c.orangeSoft).padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        HlText("단위를 확인해 주세요 (ng/dL ↔ ng/mL ↔ nmol/L)", size = HlSize.t14, weight = FontWeight.Bold, color = c.orange)
+                        HlText(ttWarning.text, size = HlSize.t13, lineHeight = 1.5f)
+                        HlTextAction("${ttWarning.swapTo.label}로 바꾸기", { actions.edit { it.copy(ttUnit = ttWarning.swapTo) } }, color = c.orange)
+                    }
                 }
             }
 

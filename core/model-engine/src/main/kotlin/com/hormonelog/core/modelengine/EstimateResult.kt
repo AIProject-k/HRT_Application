@@ -12,15 +12,37 @@ data class EstimatePoint(
     val upper: Double,
 )
 
+/** A span with no estimate, [from] inclusive and [until] exclusive: a record the model cannot sum still reaches it. */
+data class EstimateGap(val from: Instant, val until: Instant) {
+    fun covers(at: Instant): Boolean = !at.isBefore(from) && at.isBefore(until)
+
+    /** True when this gap starts between [a] and [b], so a value at one says nothing about the other. */
+    fun separates(a: Instant, b: Instant): Boolean = from.isAfter(minOf(a, b)) && !from.isAfter(maxOf(a, b))
+}
+
 data class EstimateSeries(
     val hormone: Hormone,
     val points: List<EstimatePoint>,
+    val gaps: List<EstimateGap> = emptyList(),
 ) {
     fun medianAt(instant: Instant): Double? = pointAt(instant)?.median
 
+    /** The nearest point that no gap separates from [instant]; none inside a gap. */
     fun pointAt(instant: Instant): EstimatePoint? {
-        if (points.isEmpty()) return null
-        return points.minByOrNull { kotlin.math.abs(it.at.toEpochMilli() - instant.toEpochMilli()) }
+        if (gaps.any { it.covers(instant) }) return null
+        val reachable = if (gaps.isEmpty()) points else points.filter { p -> gaps.none { it.separates(p.at, instant) } }
+        return reachable.minByOrNull { kotlin.math.abs(it.at.toEpochMilli() - instant.toEpochMilli()) }
+    }
+
+    /** The points cut wherever a gap starts between two neighbours, so a line is never drawn across one. */
+    fun segments(): List<List<EstimatePoint>> {
+        if (gaps.isEmpty()) return listOf(points)
+        val out = mutableListOf<MutableList<EstimatePoint>>()
+        for (p in points) {
+            val last = out.lastOrNull()?.last()
+            if (last == null || gaps.any { it.separates(last.at, p.at) }) out += mutableListOf(p) else out.last() += p
+        }
+        return out
     }
 }
 

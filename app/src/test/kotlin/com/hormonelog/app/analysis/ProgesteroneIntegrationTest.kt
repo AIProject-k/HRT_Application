@@ -126,7 +126,8 @@ class ProgesteroneIntegrationTest {
         }
         val recent400 = dose(now.minusSeconds(5L * 3600), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 400.0)
         flow(newestTwoHoursAgo + recent400).let { (curves, moment) ->
-            assertNull(curves.p4)
+            assertNotNull("drawn up to the record", curves.p4)
+            assertEquals(recent400.occurredAt, curves.p4!!.gaps.single().from)
             assertEquals(listOf(recent400), curves.p4Blockers)
             assertEquals(P4Status.UNSUPPORTED_DOSE, moment.status)
         }
@@ -138,6 +139,20 @@ class ProgesteroneIntegrationTest {
         flow((0 until 13).map { oral200(-(1L + it * 24L)) }).let { (curves, moment) ->
             assertNull(curves.p4)
             assertEquals(P4Status.DOSE_OUTSIDE_VIEW, moment.status)
+        }
+    }
+
+    @Test fun aMistypedRecordLeavesHomeChatAndEveryChartWindowAgreeingOnNow() {
+        val daily = (0 until 20).map { dose(now.minusSeconds(it * 86400L + 3600), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 100.0) }
+        val typo = dose(now.minusSeconds(10L * 86400), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 2.0)
+        val doses = daily + typo
+        val chat = Analysis.p4Reading(doses, now)
+        assertEquals(P4Status.AVAILABLE, chat.status)
+        for (days in listOf(1L, 7L, 14L, 30L, 90L)) {
+            val curves = Analysis.curves(doses, emptyList(), emptyList(), GonadalStatus.DECLINED, now, now.minusSeconds(days * 86400), now.plusSeconds(7 * 86400), SEOUL)
+            assertNotNull("window $days d draws a curve", curves.p4)
+            assertEquals("window $days d", chat, Analysis.p4Moment(curves, doses, now))
+            assertEquals("window $days d", if (days >= 14) listOf(typo) else emptyList(), curves.p4Blockers)
         }
     }
 

@@ -54,17 +54,35 @@ class ProgesteroneEngineTest {
         assertNull(engine.estimateAt(listOf(dose(), dose(400.0)), t))
     }
 
-    @Test fun anUnsupportedDoseBlanksTheWindowOnlyWhileItsModelledTailStillReachesIt() {
+    @Test fun anUnsupportedDoseBlanksOnlyTheMomentsItsModelledTailStillReaches() {
         val window = t.minusSeconds(86400L)
         val sixtyHoursBeforeWindow = dose(400.0, at = window.minusSeconds(60L * 3600))
         val eightyHoursBeforeWindow = dose(400.0, at = window.minusSeconds(80L * 3600))
         val future = dose(400.0, at = t.plusSeconds(86400))
         assertEquals(listOf(sixtyHoursBeforeWindow), engine.blockers(listOf(dose(), sixtyHoursBeforeWindow, future), window, t))
         assertTrue(engine.blockers(listOf(dose(), eightyHoursBeforeWindow), window, t).isEmpty())
-        assertEquals(
-            EstimateResult.Unavailable(ModelUnavailableReason.UNSUPPORTED_DOSE),
-            engine.curve(listOf(dose(), sixtyHoursBeforeWindow), window, t),
-        )
+        val series = (engine.curve(listOf(dose(), sixtyHoursBeforeWindow), window, t) as EstimateResult.Available).series
+        val gap = series.gaps.single()
+        assertEquals(window, gap.from)
+        assertNull(series.pointAt(window))
+        // A 400 mg tail ends between 60 and 80 hours, so the rest of the day is drawn.
+        assertTrue(gap.until.isAfter(window) && gap.until.isBefore(window.plusSeconds(20L * 3600)))
+        assertNotNull(series.pointAt(t))
+    }
+
+    @Test fun aMistypedDoseInsideAMonthOnlyCutsOutItsOwnHours() {
+        val from = t.minusSeconds(30L * 86400)
+        val daily = (1..30).map { dose(100.0, at = t.minusSeconds(it * 86400L)) }
+        val typo = dose(2.0, at = t.minusSeconds(10L * 86400 - 3600))
+        val result = engine.curve(daily + typo, from, t) as EstimateResult.Available
+        val gap = result.series.gaps.single()
+        assertEquals(typo.occurredAt, gap.from)
+        assertNull(result.series.pointAt(typo.occurredAt.plusSeconds(3600)))
+        assertNotNull(result.series.pointAt(typo.occurredAt.minusSeconds(3600)))
+        assertNotNull(result.series.pointAt(gap.until))
+        assertEquals(2, result.series.segments().size)
+        assertTrue("a record that cuts the curve is named, not reported as outside it", result.excluded.isEmpty())
+        assertEquals(listOf(typo), engine.blockers(daily + typo, from, t))
     }
 
     @Test fun aSixtyDayOldUnsupportedDoseNoLongerBlanksTheWindowAndStaysOnRecord() {

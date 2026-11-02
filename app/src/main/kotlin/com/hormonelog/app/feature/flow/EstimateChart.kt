@@ -86,7 +86,8 @@ fun EstimateChart(
     val accent = if (model.isMpa) c.violet else if (model.isP4) c.orange else if (model.isTotalT) c.blue else c.teal
     val soft = if (model.isMpa) c.violetSoft else if (model.isP4) c.orangeSoft else if (model.isTotalT) c.blueSoft else c.tealSoft
     val w = if (compact) 300f else 320f
-    val h = if (compact) 96f else 210f
+    // MPA without a curve has only its dose ticks to show, so its empty plot is kept low.
+    val h = if (compact) 96f else if (model.isMpa && model.curve == null) 100f else 210f
     val gestures = if (onScrub == null || compact) Modifier else Modifier
         .pointerInput(model.from, model.to) {
             detectTapGestures(onPress = { pos ->
@@ -174,7 +175,10 @@ private fun DrawScope.drawChart(
     val t1 = m.to.toEpochMilli().toDouble()
     fun xOf(t: Instant): Float = (pl + ((t.toEpochMilli() - t0) / (t1 - t0)) * iw).toFloat()
 
-    val points = m.curve?.points.orEmpty().filter { it.at.toEpochMilli() in m.from.toEpochMilli()..m.to.toEpochMilli() }
+    val segments = m.curve?.segments().orEmpty()
+        .map { seg -> seg.filter { it.at.toEpochMilli() in m.from.toEpochMilli()..m.to.toEpochMilli() } }
+        .filter { it.isNotEmpty() }
+    val points = segments.flatten()
     val unit = if (m.isP4 || m.isMpa) 1.0 else if (m.isTotalT) 20.0 else 50.0
     var top = points.maxOfOrNull { it.upper } ?: (if (m.isP4 || m.isMpa) 5.0 else if (m.isTotalT) 100.0 else 250.0)
     m.labs.filter { it.at in m.from..m.to }.forEach { top = max(top, it.value) }
@@ -184,7 +188,7 @@ private fun DrawScope.drawChart(
 
     val labelStyle = TextStyle(fontSize = (if (compact) 8f else 9.5f).sp, color = c.muted)
 
-    if (!compact) {
+    if (!compact && !(m.isMpa && points.isEmpty())) {
         // grid + y labels
         for (v in listOf(0.0, ymax / 2, ymax)) {
             drawLine(c.line, px(pl, yOf(v)), px(vbW - pr, yOf(v)), strokeWidth = 1f)
@@ -201,11 +205,11 @@ private fun DrawScope.drawChart(
         }
     }
 
-    // range band, then the curve: solid up to now, dashed after
-    if (points.size >= 2) {
+    // range band, then the curve: solid up to now, dashed after. A gap in the series cuts both.
+    for (piece in segments.filter { it.size >= 2 }) {
         val band = Path().apply {
-            points.forEachIndexed { i, p -> val o = px(xOf(p.at), yOf(p.upper)); if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }
-            for (i in points.indices.reversed()) { val o = px(xOf(points[i].at), yOf(points[i].lower)); lineTo(o.x, o.y) }
+            piece.forEachIndexed { i, p -> val o = px(xOf(p.at), yOf(p.upper)); if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }
+            for (i in piece.indices.reversed()) { val o = px(xOf(piece[i].at), yOf(piece[i].lower)); lineTo(o.x, o.y) }
             close()
         }
         drawPath(band, soft, style = Fill)
@@ -224,8 +228,8 @@ private fun DrawScope.drawChart(
             )
         }
         val nowMs = m.now.toEpochMilli()
-        line(points.filter { it.at.toEpochMilli() <= nowMs }, dashed = false)
-        line(points.filter { it.at.toEpochMilli() >= nowMs - (t1 - t0) / 160 }, dashed = true)
+        line(piece.filter { it.at.toEpochMilli() <= nowMs }, dashed = false)
+        line(piece.filter { it.at.toEpochMilli() >= nowMs - (t1 - t0) / 160 }, dashed = true)
     }
 
     // now marker
@@ -292,7 +296,7 @@ private fun DrawScope.drawChart(
         // x labels
         for (i in 0 until 4) {
             val t = Instant.ofEpochMilli((t0 + (t1 - t0) * (i + 0.5) / 4).toLong())
-            val label = measurer.measure(fmt.short(t), labelStyle)
+            val label = measurer.measure(axisLabel(fmt, t, t1 - t0), labelStyle)
             drawText(label, topLeft = Offset(px(xOf(t), 0f).x - label.size.width / 2f, size.height - label.size.height - 1f))
         }
     }
@@ -309,6 +313,10 @@ private fun DrawScope.drawChart(
         }
     }
 }
+
+/** An x-axis label: the time of day for a window of two days or less, where every date label would read the same. */
+internal fun axisLabel(fmt: Fmt, t: Instant, spanMillis: Double): String =
+    if (spanMillis <= 2 * 86_400_000.0) fmt.time(t) else fmt.short(t)
 
 /** The instant a scrub fraction points at, for the readout above the chart. */
 fun scrubInstant(model: ChartModel, fraction: Float): Instant =

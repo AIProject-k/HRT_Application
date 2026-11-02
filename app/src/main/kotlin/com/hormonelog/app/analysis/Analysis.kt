@@ -44,7 +44,7 @@ data class Curves(
     /** Planned doses beyond now, for the chart's hollow ticks. */
     val planned: List<DoseEvent>,
     val p4: EstimateSeries? = null,
-    /** Oral P4 doses (recorded or planned) that stop the P4 curve; empty when the curve is drawn. */
+    /** Oral P4 doses (recorded or planned) outside the model whose tail reaches the window; the curve is cut where it does. */
     val p4Blockers: List<DoseEvent> = emptyList(),
     /** Oral P4 doses outside the model that cannot reach the shown window; on record, not on the curve. */
     val p4Excluded: List<ExcludedDose> = emptyList(),
@@ -173,12 +173,11 @@ object Analysis {
     fun p4Reading(doses: List<DoseEvent>, at: Instant): P4Reading = p4Engine.readingAt(doses, at)
 
     /**
-     * What the P4 chart says at [at], for the window [curves] was built for. A blanked window gives the records that
-     * blank it. A window that draws no curve gives no number, so the line, the graph and the summary cannot disagree.
+     * What P4 says at [at]. The chart cuts out the same moments, so Home, chat and every chart window agree on one
+     * moment however long the window is. A window that draws no curve gives no number.
      */
     fun p4Moment(curves: Curves?, doses: List<DoseEvent>, at: Instant): P4Reading {
         if (curves == null) return P4Reading(P4Status.PENDING_CALCULATION)
-        if (curves.p4 == null && curves.p4Blockers.isNotEmpty()) return P4Reading(p4Engine.blockedStatus(curves.p4Blockers), blockers = curves.p4Blockers)
         val reading = p4Engine.readingAt(doses, at)
         // A number with no drawn curve means every taken dose lies after the window.
         return if (curves.p4 == null && reading.point != null) P4Reading(P4Status.DOSE_OUTSIDE_VIEW) else reading

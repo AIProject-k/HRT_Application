@@ -36,7 +36,7 @@ object SteadyState {
         val previousOther = taken.lastOrNull { it.drug != latest.drug || it.route != latest.route }
         if (previousOther != null) {
             val firstOfNew = taken.first { it.occurredAt.isAfter(previousOther.occurredAt) }
-            if (firstOfNew.drug == latest.drug && firstOfNew.route == latest.route) {
+            if (firstOfNew.drug == latest.drug && firstOfNew.route == latest.route && !keptOn(taken, firstOfNew)) {
                 notice(firstOfNew, firstOfNew.route.calibrationGroup(), now, fmt,
                     "${doseSummary(previousOther.drug, previousOther.route, previousOther.amountEntered, previousOther.enteredUnit)} → ${doseSummary(latest.drug, latest.route, latest.amountEntered, latest.enteredUnit)}로 바꿨어요.")
                     ?.let { return it }
@@ -52,6 +52,14 @@ object SteadyState {
             changed, changed.route.calibrationGroup(), now, fmt,
             "${product(latest)} ${plainNumber(before.amountEntered)} → ${plainNumber(changed.amountEntered)} ${changed.enteredUnit.label}로 바꿨어요.",
         )
+    }
+
+    /** True when [first]'s product was in use before and came back on its usual interval: taken alongside the other, not switched to. */
+    private fun keptOn(taken: List<DoseEvent>, first: DoseEvent): Boolean {
+        val earlier = taken.filter { it.drug == first.drug && it.route == first.route && it.occurredAt.isBefore(first.occurredAt) }
+        if (earlier.size < 2) return false
+        val intervals = earlier.zipWithNext { a, b -> b.occurredAt.epochSecond - a.occurredAt.epochSecond }.sorted()
+        return first.occurredAt.epochSecond - earlier.last().occurredAt.epochSecond <= intervals[intervals.size / 2] * 3 / 2
     }
 
     private fun product(d: DoseEvent): String = if (d.route == com.hormonelog.core.domain.Route.PATCH) "패치" else d.drug.shortLabel

@@ -61,7 +61,9 @@ import com.hormonelog.app.ui.kit.HlSegmented
 import com.hormonelog.app.ui.kit.HlSheet
 import com.hormonelog.app.ui.kit.HlSheetTitle
 import com.hormonelog.app.ui.kit.SegItem
+import com.hormonelog.app.ui.kit.HlTextAction
 import com.hormonelog.app.ui.kit.HlTextField
+import com.hormonelog.app.analysis.ttUnitWarning
 import com.hormonelog.app.ui.theme.Hl
 import com.hormonelog.app.ui.theme.HlRadius
 import com.hormonelog.app.ui.theme.HlSize
@@ -432,6 +434,10 @@ private fun BaselineStep(o: OnboardingState, fmt: Fmt, onPickDate: () -> Unit, a
                 unit = o.tUnit.label, error = tError,
             )
             if (tError) HlFieldError("올바른 숫자를 입력해 주세요")
+            ttUnitWarning(o.baselineT.trim().toDoubleOrNull(), o.tUnit, o.gonadal != GonadalStatus.POST_ORCHIECTOMY)?.let { w ->
+                HlText(w.text, size = HlSize.t13, color = Hl.colors.orange, lineHeight = 1.5f)
+                HlTextAction("${w.swapTo.label}로 바꾸기", { actions.edit { it.copy(tUnit = w.swapTo) } }, color = Hl.colors.orange)
+            }
         }
         val picked = o.baselineMillis?.let { Instant.ofEpochMilli(it).atZone(fmt.zone).toLocalDate() }
         DateField(

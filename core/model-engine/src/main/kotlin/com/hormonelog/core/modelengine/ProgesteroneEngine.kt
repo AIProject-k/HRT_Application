@@ -6,6 +6,7 @@ import com.hormonelog.core.domain.Drug
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.evidence.EvidenceBundle
 import java.time.Instant
+import kotlin.math.ceil
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
@@ -60,7 +61,7 @@ class ProgesteroneEngine(private val bundle: EvidenceBundle) {
         )
     }
 
-    /** Oral P4 doses up to [to] that the curve cannot use and that still reach the window from [from]. Any one of them blanks the window. */
+    /** Oral P4 doses up to [to] that the curve cannot use and that still reach the window from [from]. Each blanks the moments its tail reaches. */
     fun blockers(doses: List<DoseEvent>, from: Instant, to: Instant): List<DoseEvent> {
         if (!ready()) return emptyList()
         return doses.filter {
@@ -76,22 +77,43 @@ class ProgesteroneEngine(private val bundle: EvidenceBundle) {
         if (!ready()) return EstimateResult.Unavailable(ModelUnavailableReason.MISSING_EVIDENCE)
         val taken = doses.filter { it.drug == Drug.PROGESTERONE_MICRONIZED && it.status.wasTaken && !it.occurredAt.isAfter(to) }
         if (taken.isEmpty()) return EstimateResult.Unavailable(ModelUnavailableReason.NO_DATA)
-        val blocking = blockers(doses, from, to)
-        if (blocking.isNotEmpty()) {
-            return EstimateResult.Unavailable(
-                if (blocking.any { it.route != Route.ORAL }) ModelUnavailableReason.ROUTE_UNSUPPORTED else ModelUnavailableReason.UNSUPPORTED_DOSE,
-            )
-        }
         require(to >= from && samples > 0)
         val span = to.toEpochMilli() - from.toEpochMilli()
         val times = (0..samples).map { from.plusMillis((span.toDouble() * it / samples).toLong()) }.toMutableSet()
         // Long chart windows must still contain the short oral peaks and pre-dose zeros.
         taken.forEach { d -> hours.forEach { h -> d.occurredAt.plusSeconds(h * 3600L).takeIf { it in from..to }?.let(times::add) } }
-        val points = times.sorted().map { at -> readingAt(taken, at).point ?: EstimatePoint(at, 0.0, 0.0, 0.0) }
+        // A record the model cannot sum is cut out exactly: from the moment it was taken to the end of its tail.
+        taken.filter { !supported(it) }.forEach { d ->
+            listOfNotNull(d.occurredAt.minusMillis(1), horizonEnd(d)).filter { it in from..to }.forEach(times::add)
+        }
+        val points = ArrayList<EstimatePoint>()
+        val gaps = ArrayList<EstimateGap>()
+        var gapFrom: Instant? = null
+        for (at in times.sorted()) {
+            val reading = readingAt(taken, at)
+            if (reading.status == P4Status.UNSUPPORTED_DOSE || reading.status == P4Status.UNSUPPORTED_ROUTE) {
+                if (gapFrom == null) gapFrom = at
+                continue
+            }
+            gapFrom?.let { gaps += EstimateGap(it, at) }
+            gapFrom = null
+            points += reading.point ?: EstimatePoint(at, 0.0, 0.0, 0.0)
+        }
+        gapFrom?.let { gaps += EstimateGap(it, to.plusMillis(1)) }
+        val blocking = blockers(doses, from, to)
+        if (points.isEmpty()) {
+            return EstimateResult.Unavailable(
+                if (blocking.any { it.route != Route.ORAL }) ModelUnavailableReason.ROUTE_UNSUPPORTED else ModelUnavailableReason.UNSUPPORTED_DOSE,
+            )
+        }
         // Out-of-range records that cannot reach this window stay on record and are reported, not hidden.
-        val excluded = taken.filter { !supported(it) }.map { ExcludedDose(it, DoseExclusion.OUTSIDE_INFLUENCE) }
-        return EstimateResult.Available(EstimateSeries(Hormone.P4, points), excluded)
+        val excluded = taken.filter { !supported(it) && it !in blocking }.map { ExcludedDose(it, DoseExclusion.OUTSIDE_INFLUENCE) }
+        return EstimateResult.Available(EstimateSeries(Hormone.P4, points, gaps), excluded)
     }
+
+    /** The first instant the dose's tail no longer reaches, or null when it never ends. */
+    private fun horizonEnd(d: DoseEvent): Instant? =
+        horizonHours(d).takeIf { it.isFinite() }?.let { d.occurredAt.plusMillis(ceil(it * 3_600_000.0).toLong()) }
 
     private fun ready(): Boolean = bundle.supports(Route.ORAL) &&
         (listOf("referenceMg", "studyBaseline", "minMg", "maxMg") + hours.drop(1).map { "hour$it" }).all { p[it]?.isFinite() == true } &&

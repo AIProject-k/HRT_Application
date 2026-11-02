@@ -75,9 +75,13 @@ import com.hormonelog.app.ui.theme.Hl
 import com.hormonelog.app.ui.theme.HlRadius
 import com.hormonelog.app.ui.theme.HlSize
 import com.hormonelog.app.ui.theme.HlText
+import com.hormonelog.app.state.plainNumber
+import com.hormonelog.core.domain.Drug
+import com.hormonelog.core.domain.GonadalStatus
 import com.hormonelog.core.domain.Route
 import com.hormonelog.core.domain.isEstrogen
 import com.hormonelog.core.modelengine.CalibrationResult
+import com.hormonelog.core.modelengine.TtSuppressionEngine
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.math.roundToInt
@@ -207,6 +211,19 @@ fun FlowScreen(s: AppState, fmt: Fmt, actions: FlowActions) {
                 if (!isE2 && recent.isNotEmpty() && recent.all { it.route == Route.ORAL || it.route == Route.SUBLINGUAL } && !curves.ttHidden) {
                     add { HlBanner(HlNotice.Warn) { HlText("경구·설하만 쓰면 T 예측이 낮게 나올 수 있어요.", size = HlSize.t13, lineHeight = 1.5f) } }
                 }
+                val baselineT = Analysis.baselineT(s.labs)
+                val usable = TtSuppressionEngine.MEASURED_BASELINE_MIN..TtSuppressionEngine.MEASURED_BASELINE_MAX
+                if (!isE2 && !curves.ttHidden && status != GonadalStatus.POST_ORCHIECTOMY && baselineT != null && baselineT !in usable) {
+                    add {
+                        HlBanner(HlNotice.Warn) {
+                            HlText(
+                                "HRT 시작 전 Total T가 ${plainNumber(baselineT)} ng/dL로 저장돼 있어요. 계산에는 ${usable.start.toInt()}–${usable.endInclusive.toInt()} ng/dL 안의 값만 써서 " +
+                                    "${baselineT.coerceIn(usable).toInt()} ng/dL로 맞췄어요. 검사지 단위가 ng/mL였다면 그 검사 기록의 단위를 고쳐 주세요.",
+                                size = HlSize.t13, lineHeight = 1.5f,
+                            )
+                        }
+                    }
+                }
                 steady?.let { n -> add { HlBanner(HlNotice.Info) { HlText(n.text, size = HlSize.t13, lineHeight = 1.5f) } } }
             }
             if (notices.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { notices.forEach { it() } }
@@ -292,17 +309,29 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
     // The line above the chart follows the finger; at rest it reads "now".
     val at = if (model != null && ui.scrub != null) scrubInstant(model, ui.scrub) else fmt.now
     val p4 = if (isP4) Analysis.p4Moment(curves, s.doses.filter { !it.occurredAt.isAfter(fmt.now) } + (curves?.planned ?: emptyList()), at) else null
-    val point = if (p4 != null) p4.point else model?.curve?.pointAt(at)
+    // At rest the number comes from the model itself, as on Home; a long window's samples are hours apart.
+    val exactNow = remember(s.doses, s.regimens, s.labs, s.settings.gonadalStatus, curves, ui.series, fmt.now) {
+        when {
+            curves == null || model?.curve == null -> null
+            isE2 -> Analysis.e2At(s.doses, s.regimens, curves.calibration, fmt.now, fmt.now, fmt.zone)
+            ui.series == HormoneSeries.TT -> Analysis.ttAt(s.doses, s.labs, s.settings.gonadalStatus, curves.calibration, fmt.now)
+            else -> null
+        }
+    }
+    val point = if (p4 != null) p4.point else if (ui.scrub == null && exactNow != null) exactNow else model?.curve?.pointAt(at)
     val near = model?.labs?.minByOrNull { kotlin.math.abs(it.at.toEpochMilli() - at.toEpochMilli()) }
         ?.takeIf { kotlin.math.abs(it.at.toEpochMilli() - at.toEpochMilli()) <= maxOf(0.6 * 86_400_000.0, w.spanDays * 86_400_000.0 / 120) }
     val summary = if (model?.curve != null) {
         val past = model.curve.points.filter { !it.at.isAfter(fmt.now) }
-        val range = if (past.isEmpty()) "" else "${past.minOf { it.lower }.roundToInt()}–${past.maxOf { it.upper }.roundToInt()}"
+        val range = if (past.isEmpty()) "" else "${past.minOf { it.median }.roundToInt()}–${past.maxOf { it.median }.roundToInt()}"
         val outOfRange = if (isP4) curves?.p4Excluded.orEmpty().size else 0
+        val cut = if (isP4) curves?.p4Blockers.orEmpty().size else 0
         "${rangeText(ui.range)} 예상 $name $range $unit, 실측 ${model.labs.count { it.at in w.from..fmt.now }}건" +
-            if (outOfRange > 0) " · 영향 없는 지원 밖 기록 ${outOfRange}건은 뺐고 그대로 보존해요" else ""
+            (if (cut > 0) " · 지원 밖 기록 ${cut}건이 닿는 시간은 그래프를 비웠어요" else "") +
+            (if (outOfRange > 0) " · 영향 없는 지원 밖 기록 ${outOfRange}건은 뺐고 그대로 보존해요" else "")
     } else if (isMpa) {
-        mpaHeadline(curves)
+        val taken = s.doses.count { it.drug == Drug.MEDROXYPROGESTERONE_ACETATE && it.status.wasTaken && it.occurredAt in w.from..fmt.now }
+        "${rangeText(ui.range)} 프로베라 복용 ${taken}건 · 농도 곡선은 아직 없어요"
     } else {
         "예상 $name 곡선 없음"
     }
@@ -334,9 +363,12 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
             Box(Modifier.fillMaxWidth().aspectRatio(320f / 210f))
         }
         FlowRow(Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            LegendRow(if (isP4) "복용분 근사 · 범위 미산정" else if (isMpa) "곡선 없음" else "예상 · 범위") { Box(Modifier.size(width = 14.dp, height = 8.dp).clip(RoundedCornerShape(4.dp)).background(if (isE2) c.tealSoft else c.blueSoft).border(2.dp, accent, RoundedCornerShape(4.dp))) }
-            LegendRow("실측") { MeasuredMark(8.dp) }
-            LegendRow(if (isP4) "자동 보정 안 함" else "보정 제외") { MeasuredMark(8.dp, hollow = true) }
+            // MPA has no curve and no lab analyte yet, so only its dose marks are explained.
+            if (!isMpa) {
+                LegendRow(if (isP4) "복용분 근사 · 범위 미산정" else "예상 · 범위") { Box(Modifier.size(width = 14.dp, height = 8.dp).clip(RoundedCornerShape(4.dp)).background(if (isE2) c.tealSoft else c.blueSoft).border(2.dp, accent, RoundedCornerShape(4.dp))) }
+                LegendRow("실측") { MeasuredMark(8.dp) }
+                LegendRow(if (isP4) "자동 보정 안 함" else "보정 제외") { MeasuredMark(8.dp, hollow = true) }
+            }
             LegendRow(if (isP4) "프로게스테론 복용" else if (isMpa) "프로베라 복용" else "에스트로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.blue)) }
             if (!isP4 && !isMpa) LegendRow("항안드로겐") { Box(Modifier.size(width = 3.dp, height = 10.dp).background(c.violet)) }
             LegendRow("예정") { Box(Modifier.size(width = 4.dp, height = 10.dp).border(1.2.dp, c.blue)) }

@@ -143,7 +143,7 @@ class TtSuppressionEngine internal constructor(private val bundle: EvidenceBundl
         adjustments: Adjustments = emptyMap(),
     ): Double? = estimateAt(doses, instant, status, adjustments)?.median
 
-    private companion object {
+    companion object {
         /** A measured pre-HRT value outside this is a unit slip or a different condition, not a starting point. */
         const val MEASURED_BASELINE_MIN = 150.0
         const val MEASURED_BASELINE_MAX = 1200.0
