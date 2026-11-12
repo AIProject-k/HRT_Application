@@ -132,7 +132,6 @@ object TimelineLogic {
             val gel = d.route == Route.GEL
             val summary = doseSummary(d.drug, d.route, d.amountEntered, d.enteredUnit)
             val parts = buildList {
-                if (gel) add("곡선 제외 · 모델 없음")
                 changed[d.id]?.let(::add)
                 d.site?.let { add(it.label) }
                 if (d.drug == Drug.PROGESTERONE_MICRONIZED) {

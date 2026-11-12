@@ -151,10 +151,10 @@ class TimelineLogicTest {
     }
 
     @Test
-    fun gelStaysARowAndSaysItIsNotOnTheCurve() {
+    fun gelStaysARowOfItsOwn() {
         val rows = build().months.flatMap { it.days }.flatMap { it.rows }.filter { it.kind == RowKind.GEL }
         assertEquals(2, rows.size)
-        assertTrue(rows.all { it.sub.contains("곡선 제외") })
+        assertTrue(rows.none { it.sub.contains("곡선 제외") })
     }
 
     @Test

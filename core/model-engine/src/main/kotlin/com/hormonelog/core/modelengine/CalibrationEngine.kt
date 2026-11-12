@@ -10,6 +10,7 @@ import com.hormonelog.core.evidence.EvidenceBundle
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
@@ -29,7 +30,7 @@ enum class LabExclusion {
     TOO_EARLY,
     NO_MODEL,
 
-    /** A route without a model (gel) sits in the weeks before the draw. */
+    /** A dose the model cannot describe (a patch of unknown strength) sits in the weeks before the draw. */
     MIXED_UNMODELLED,
 
     /** Several routes contribute in similar amounts, so the lab cannot be pinned on one. */
@@ -178,7 +179,7 @@ class CalibrationEngine(bundle: EvidenceBundle) {
         val shares = HashMap<CalibrationGroup, Double>()
         for (d in estrogen) {
             val elapsed = Duration.between(d.occurredAt, t).toMillis() / MILLIS_PER_DAY
-            val g = d.route.calibrationGroup() ?: continue
+            val g = d.route.calibrationGroup()
             if (elapsed > 0) shares.merge(g, e2.contributionOf(d, elapsed) ?: 0.0, Double::plus)
         }
         val total = shares.values.sum()
@@ -230,6 +231,27 @@ class CalibrationEngine(bundle: EvidenceBundle) {
             return LabExclusion.MIXED_UNMODELLED
         }
         return null
+    }
+
+    /**
+     * How far each used E2 lab landed from what the labs before it predicted: |measured − predicted| ÷ predicted,
+     * oldest first. A group's first lab is judged against the uncorrected literature curve, so each number is the
+     * miss a reader would have seen on the day of that draw.
+     */
+    fun predictionErrors(result: CalibrationResult, labs: List<LabResult>): Map<CalibrationGroup, List<Double>> {
+        val earlier = HashMap<CalibrationGroup, MutableList<Double>>()
+        val errors = LinkedHashMap<CalibrationGroup, MutableList<Double>>()
+        for (lab in labs.filter { it.collectedAt != null }.sortedBy { it.collectedAt }) {
+            val c = result.labs[lab.id]?.e2?.takeIf { it.used } ?: continue
+            val logs = earlier.getOrPut(c.group!!) { ArrayList() }
+            val scale = if (logs.isEmpty()) 1.0 else exp(logs.average()).coerceIn(SCALE_MIN, SCALE_MAX)
+            val drug = max(c.expected!!.median - E2CurveEngine.DEFAULT_BASELINE, MIN_CONTRIBUTION)
+            val predicted = E2CurveEngine.DEFAULT_BASELINE + drug * scale
+            val measured = E2CurveEngine.DEFAULT_BASELINE + drug * c.ratio!!
+            errors.getOrPut(c.group) { ArrayList() }.add(abs(measured - predicted) / predicted)
+            logs += ln(c.ratio)
+        }
+        return errors
     }
 
     private fun canonical(v: LabAnalyteValue): Double? =

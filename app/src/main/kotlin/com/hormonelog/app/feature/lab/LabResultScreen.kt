@@ -171,6 +171,7 @@ private fun groupName(g: CalibrationGroup?): String = when (g) {
     CalibrationGroup.INJECTION -> "주사"
     CalibrationGroup.ORAL -> "경구·설하"
     CalibrationGroup.PATCH -> "패치"
+    CalibrationGroup.GEL -> "젤"
     null -> ""
 }
 

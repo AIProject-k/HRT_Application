@@ -81,6 +81,9 @@ object Analysis {
     fun calibrate(doses: List<DoseEvent>, labs: List<LabResult>, status: GonadalStatus): CalibrationResult =
         calibrationEngine.calibrate(doses.withoutMpa(), labs, status, baselineT(labs))
 
+    /** Per route group, how far each used E2 lab was from the prediction the earlier labs gave. Oldest first. */
+    fun predictionErrors(calibration: CalibrationResult, labs: List<LabResult>) = calibrationEngine.predictionErrors(calibration, labs)
+
     /** MPA has no curve yet; kept out of the E2 and Total T models, where it would read as a flat baseline. */
     private fun List<DoseEvent>.withoutMpa(): List<DoseEvent> = filter { it.drug != Drug.MEDROXYPROGESTERONE_ACETATE }
 

@@ -20,7 +20,7 @@ class MpaEvidenceTest {
         assertEquals(DoseDesign.REPEATED, repeated.design)
         assertEquals(10.0, repeated.doseMg!!, 0.0)
         assertEquals(7, repeated.dayNumber)
-        assertTrue(sources.none { it.design == DoseDesign.SINGLE && it.doseMg == 10.0 })
+        assertTrue(sources.none { it.summary != null && it.design == DoseDesign.SINGLE && it.doseMg == 10.0 })
     }
 
     @Test fun pfizerSummaryValuesMatchThePrintedTable() {
@@ -54,6 +54,17 @@ class MpaEvidenceTest {
     @Test fun noSourceReachesAStageThatAllowsACurveAndTheBundleStaysAtPkSummary() {
         assertEquals(EvidenceStage.PK_SUMMARY, MpaEvidence.bundle.stage)
         assertTrue(sources.all { it.stage == EvidenceStage.METADATA_ONLY || it.stage == EvidenceStage.PK_SUMMARY })
+    }
+
+    @Test fun theMonographsDisagreeOnHeightSoNeitherIsPooledWithPfizer() {
+        val ria = source("meprogest-monograph-10mg-day6")
+        assertEquals(MpaAssay.RIA, ria.assay)
+        assertEquals(MeanSd(7.0346, null), ria.summary!!.cmax)
+        // Same dose, same design, a day apart: the radioimmunoassay reads about ten times the GC-MS value.
+        assertTrue(ria.summary.cmax!!.mean / source("pfizer-repeated-10mg-day7").summary!!.cmax!!.mean > 9.0)
+        val unnamed = source("pms-monograph-single-2x5mg")
+        assertNull(unnamed.summary)
+        assertEquals(EvidenceStage.METADATA_ONLY, unnamed.stage)
     }
 
     @Test fun victorAndJohanssonNumbersAreNotStoredBecauseTheyWereNeverChecked() {

@@ -135,7 +135,7 @@ class ReportLogicTest {
     fun theModelLinesSayWhatWasCalibratedAndWhatWasLeftOut() {
         val lines = build().model!!.joinToString("\n")
         assertTrue(lines, lines.contains("주사 E2: 검사"))
-        assertTrue(lines, lines.contains("젤 기록 2건은 곡선 계산에서 제외"))
+        assertFalse(lines, lines.contains("곡선 계산에서 제외"))
         val declined = build(s = state.copy(settings = state.settings.copy(gonadalStatus = GonadalStatus.DECLINED))).model!!.joinToString("\n")
         assertTrue(declined, declined.contains("Total T 곡선은 그리지 않았어요"))
     }

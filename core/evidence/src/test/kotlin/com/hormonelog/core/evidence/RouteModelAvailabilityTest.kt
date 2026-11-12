@@ -14,14 +14,14 @@ class RouteModelAvailabilityTest {
     }
 
     @Test
-    fun v1BundleSupportsInjectionAndPatchButNotGel() {
+    fun v1BundleSupportsEveryRoute() {
         val availability = RouteModelAvailability(EvidenceBundleV1.bundle)
         assertTrue(availability.canEstimate(Route.IM_INJECTION))
         assertTrue(availability.canEstimate(Route.SC_INJECTION))
         assertTrue(availability.canEstimate(Route.PATCH))
         assertTrue(availability.canEstimate(Route.ORAL))
         assertTrue(availability.canEstimate(Route.SUBLINGUAL))
-        assertFalse(availability.canEstimate(Route.GEL))
+        assertTrue(availability.canEstimate(Route.GEL))
     }
 
     @Test

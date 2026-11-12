@@ -64,13 +64,30 @@ class E2CurveEngineTest {
     }
 
     @Test
-    fun aGelDoseIsLeftOutAndReportedWhileTheRestStillDrawsACurve() {
+    fun aDoseTheModelCannotDescribeIsLeftOutAndReportedWhileTheRestStillDrawsACurve() {
         val inj = dose(Route.IM_INJECTION, Drug.ESTRADIOL_VALERATE, 5.0, t0)
-        val gel = dose(Route.GEL, Drug.ESTRADIOL_GEL, 1.5, t0.plus(2, ChronoUnit.DAYS))
-        val r = engine.curve(listOf(inj, gel), t0, t0.plus(21, ChronoUnit.DAYS)) as EstimateResult.Available
+        val patch = dose(Route.PATCH, Drug.ESTRADIOL_PATCH, 1.0, t0.plus(2, ChronoUnit.DAYS), DoseUnit.PATCH)
+        val r = engine.curve(listOf(inj, patch), t0, t0.plus(21, ChronoUnit.DAYS)) as EstimateResult.Available
 
-        assertEquals(listOf(ExcludedDose(gel, DoseExclusion.NO_MODEL)), r.excluded)
+        assertEquals(listOf(ExcludedDose(patch, DoseExclusion.PATCH_STRENGTH_MISSING)), r.excluded)
         assertTrue(r.series.points.maxOf { it.median } > 200.0)
+    }
+
+    @Test
+    fun dailyGelSettlesNearTheLevelsItsSourcesReport() {
+        // 1.5 mg/day: 68 pg/mL (postmenopausal) and a median of 78 pg/mL (transgender adults) in the cited sources.
+        val doses = (0..20).map { dose(Route.GEL, Drug.ESTRADIOL_GEL, 1.5, t0.plus(it.toLong(), ChronoUnit.DAYS)) }
+        val lastDose = t0.plus(20, ChronoUnit.DAYS)
+        val day = (engine.curve(doses, lastDose, lastDose.plus(1, ChronoUnit.DAYS), samples = 240) as EstimateResult.Available).series.points
+        val average = day.map { it.median }.average()
+        val peak = day.maxByOrNull { it.median }!!
+        val peakHours = (peak.at.toEpochMilli() - lastDose.toEpochMilli()) / 3_600_000.0
+
+        assertTrue("average $average", average in 65.0..80.0)
+        assertTrue("peak after $peakHours h", peakHours in 6.0..12.0)
+        assertTrue("peak ${peak.median} over average $average", peak.median / average in 1.1..1.7)
+        // Gel varies most between people, so its interval is the widest of all routes.
+        assertEquals(0.6, (peak.upper - peak.median) / peak.median, 1e-9)
     }
 
     @Test

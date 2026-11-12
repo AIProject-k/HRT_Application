@@ -58,6 +58,7 @@ private fun groupName(g: CalibrationGroup) = when (g) {
     CalibrationGroup.INJECTION -> "주사"
     CalibrationGroup.ORAL -> "경구·설하"
     CalibrationGroup.PATCH -> "패치"
+    CalibrationGroup.GEL -> "젤"
 }
 
 private class LabLine(val labId: UUID, val title: String, val sub: String, val ratio: String, val why: String?, val fix: String?)
@@ -71,6 +72,7 @@ fun ModelScreen(s: AppState, fmt: Fmt, actions: ModelActions) {
         CalibrationGroup.entries.filter { g -> s.doses.any { it.status.wasTaken && it.drug.isEstrogen && it.route.calibrationGroup() == g } }
     }
     val lines = remember(s.labs, s.doses, s.regimens, calibration) { labLines(s, calibration, fmt) }
+    val errors = remember(s.labs, calibration) { Analysis.predictionErrors(calibration, s.labs) }
 
     Column(Modifier.fillMaxWidth()) {
         HlTopBar("모델 상태", actions.back)
@@ -83,7 +85,7 @@ fun ModelScreen(s: AppState, fmt: Fmt, actions: ModelActions) {
             if (groupsInUse.isEmpty()) {
                 HlText("투약을 기록하면 경로마다 보정 상태가 여기에 보여요.", size = HlSize.t13, color = c.muted)
             }
-            groupsInUse.forEach { g -> GroupCard(g, calibration) }
+            groupsInUse.forEach { g -> GroupCard(g, calibration, errors[g].orEmpty()) }
 
             TotalTCard(calibration, status, actions.gonadal)
 
@@ -140,7 +142,7 @@ fun ModelScreen(s: AppState, fmt: Fmt, actions: ModelActions) {
 }
 
 @Composable
-private fun GroupCard(g: CalibrationGroup, calibration: CalibrationResult) {
+private fun GroupCard(g: CalibrationGroup, calibration: CalibrationResult, errors: List<Double>) {
     val c = Hl.colors
     val cal = calibration.groups[g]
     val atLimit = cal?.atLimit == true
@@ -175,8 +177,17 @@ private fun GroupCard(g: CalibrationGroup, calibration: CalibrationResult) {
                 else "보정 폭은 −${((1 - CalibrationEngine.SCALE_MIN) * 100).roundToInt()}%~+${((CalibrationEngine.SCALE_MAX - 1) * 100).roundToInt()}%로 제한돼요. 검사가 더 쌓이면 범위가 좁아져요.",
                 size = HlSize.t13, color = if (atLimit) c.text else c.muted, lineHeight = 1.5f,
             )
+            predictionErrorText(errors)?.let { HlText(it, size = HlSize.t13, weight = FontWeight.SemiBold, lineHeight = 1.5f) }
         }
     }
+}
+
+/** The size of past misses in plain words; each lab is compared with what the labs before it predicted. */
+internal fun predictionErrorText(errors: List<Double>): String? {
+    if (errors.isEmpty()) return null
+    val mean = (errors.average() * 100).roundToInt()
+    return if (errors.size == 1) "첫 검사에서 예측이 ±$mean% 벗어났어요. 보정 전 문헌 평균과 비교한 값이에요."
+    else "지난 검사 ${errors.size}번에서 예측이 평균 ±$mean% 벗어났어요. 검사마다 그 전 검사까지만 반영한 예측과 비교했어요."
 }
 
 @Composable

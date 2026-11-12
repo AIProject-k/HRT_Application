@@ -10,15 +10,15 @@ import com.hormonelog.core.evidence.EvidenceBundle
 /**
  * Personal calibration is kept per group of routes: what one person absorbs from an
  * injection says little about what they absorb from a tablet, so a route change never
- * inherits the other route's correction. Gel has no model, hence no group.
+ * inherits the other route's correction.
  */
-enum class CalibrationGroup { INJECTION, ORAL, PATCH }
+enum class CalibrationGroup { INJECTION, ORAL, PATCH, GEL }
 
-fun Route.calibrationGroup(): CalibrationGroup? = when (this) {
+fun Route.calibrationGroup(): CalibrationGroup = when (this) {
     Route.IM_INJECTION, Route.SC_INJECTION -> CalibrationGroup.INJECTION
     Route.ORAL, Route.SUBLINGUAL -> CalibrationGroup.ORAL
     Route.PATCH -> CalibrationGroup.PATCH
-    Route.GEL -> null
+    Route.GEL -> CalibrationGroup.GEL
 }
 
 /** Dispatches a dose event to the right E2 route model, pulling parameters from the bundle. */
@@ -52,7 +52,8 @@ class E2RouteModels(bundle: EvidenceBundle) {
                 } else {
                     null
                 }
-            Route.GEL -> DoseExclusion.NO_MODEL
+            Route.GEL ->
+                if (event.drug != Drug.ESTRADIOL_GEL || event.normalizedMilligrams == null) DoseExclusion.UNSUPPORTED_COMBINATION else null
         }
     }
 
@@ -93,7 +94,13 @@ class E2RouteModels(bundle: EvidenceBundle) {
                 val d = p["d"] ?: return null
                 E2ThreeCompartmentModel.concentration(elapsedDays, micrograms, d, p["k1"]!!, p["k2"]!!, p["k3"]!!)
             }
-            Route.GEL -> null
+            Route.GEL -> {
+                val amount = event.normalizedMilligrams ?: return null
+                val p = routeParameters.getValue(Route.GEL)
+                val s = p["gelScale"] ?: return null
+                // Skin to blood is first-order in and first-order out, the same shape as a tablet with slower rates.
+                OralE2Model.concentration(elapsedDays, amount, s, p["gelKa"]!!, p["gelKe"]!!)
+            }
         }
     }
 

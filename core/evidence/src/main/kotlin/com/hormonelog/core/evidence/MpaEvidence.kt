@@ -62,11 +62,14 @@ data class MpaEvidenceBundle(val version: String, val sources: List<MpaSource>) 
 /**
  * The MPA evidence this build carries. Printed values were read from the Pfizer prescribing information (Table 1 on the
  * clinical pharmacology page) on 2026-10-28, and agree with the 2026-10-27 read. Literature entries are metadata only:
- * the abstracts were read, but the full text was not reached, so no number from them is stored.
+ * the abstracts were read, but the full text was not reached, so no number from them is stored. The two Canadian product
+ * monographs were read in full on 2026-11-12. They agree with Pfizer on the shape (peak near 3 h, half-life near 13 h) but
+ * not on the height: per milligram, the GC-MS-era single-dose table is about twice Pfizer's and the radioimmunoassay table
+ * about ten times. With the height unsettled, no source reaches a stage that allows a curve.
  */
 object MpaEvidence {
     val bundle = MpaEvidenceBundle(
-        version = "mpa-evidence-2026-10-28.1",
+        version = "mpa-evidence-2026-11-12.1",
         sources = listOf(
             MpaSource(
                 id = "pfizer-single-2x10mg",
@@ -172,6 +175,42 @@ object MpaEvidence {
                 stage = EvidenceStage.METADATA_ONLY,
                 reviewedOn = "2026-10-28",
                 note = "Quoted: 'In 14 patients with advanced liver disease, MPA disposition was significantly altered (reduced elimination).' No values are given. Carry this into the disclaimers.",
+            ),
+            MpaSource(
+                id = "meprogest-monograph-10mg-day6",
+                citation = "MEPROGEST (medroxyprogesterone acetate tablets USP) product monograph, Pfizer Canada, 2010, comparative bioavailability table",
+                pmid = null,
+                locator = "Bioavailability, summary table, REFERENCE column (PROVERA 10 mg); pdf.hres.ca/dpd_pm/00011520.PDF",
+                population = "healthy postmenopausal women",
+                subjects = 25,
+                doseMg = 10.0,
+                formulation = "oral tablet, 1 × 10 mg daily for 6 days",
+                fedState = FedState.FASTED,
+                design = DoseDesign.REPEATED,
+                dayNumber = 6,
+                assay = MpaAssay.RIA,
+                summary = PkSummary(cmax = MeanSd(7.0346, null)),
+                stage = EvidenceStage.PK_SUMMARY,
+                reviewedOn = "2026-11-12",
+                note = "Arithmetic mean; the table prints a CV of 31.8%, not an SD. Also printed: Cmin 1.2041 ng/mL (CV 32.0%) and AUC over the dosing interval 62.546 ng·h/mL (CV 26.0%); no Tmax, half-life or AUC to infinity. Radioimmunoassay: about ten times the Pfizer GC-MS value for the same dose and day, so the two must never be pooled.",
+            ),
+            MpaSource(
+                id = "pms-monograph-single-2x5mg",
+                citation = "pms-MEDROXYPROGESTERONE (medroxyprogesterone acetate tablets USP) product monograph, Pharmascience, 2002, comparative bioavailability table",
+                pmid = null,
+                locator = "Pharmacokinetic indices table, Provera column; pdf.hres.ca/dpd_pm/00000786.PDF",
+                population = "not stated",
+                subjects = null,
+                doseMg = 10.0,
+                formulation = "oral tablets, 2 × 5 mg",
+                fedState = FedState.FASTED,
+                design = DoseDesign.SINGLE,
+                dayNumber = null,
+                assay = MpaAssay.NOT_STATED,
+                summary = null,
+                stage = EvidenceStage.METADATA_ONLY,
+                reviewedOn = "2026-11-12",
+                note = "No number is stored because the monograph names neither the number of subjects nor the assay. Printed for Provera, arithmetic mean (CV): Cmax 943 pg/mL (62%), AUC to infinity 6782 pg·h/mL (45%); Tmax 2.9 h (SD 1.7), half-life 12.9 h (SD 11). Per milligram that is about twice the Pfizer single-dose table.",
             ),
             MpaSource(
                 id = "wikstrom-1984-pmid6233840",

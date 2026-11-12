@@ -9,9 +9,9 @@ import com.hormonelog.core.domain.Route
  * NOT clinically validated and not for dosing decisions. The E2 3-compartment
  * rate constants and the patch parameters are taken from the open-source
  * estrannaise.js project (MIT, © 2025 alix); oral/sublingual and the TT PK/PD
- * constants are coarse fits to the cited abstracts and reviews. Gel is
- * deliberately omitted — label-only PK, postmenopausal population, high site
- * variability — so `supports(Route.GEL)` stays false.
+ * constants are coarse fits to the cited abstracts and reviews. Gel is a coarse
+ * one-compartment fit to steady-state averages; absorption differs a lot between
+ * people and application sites, so the engine gives it the widest interval.
  */
 object EvidenceBundleV1 {
 
@@ -50,6 +50,16 @@ object EvidenceBundleV1 {
             "wiki_cpa", "Pharmacology of cyproterone acetate",
             "Wikipedia contributors", 2025, "en.wikipedia.org/wiki/Pharmacology_of_cyproterone_acetate",
             "oral F ~88%, elimination t½ ~1.6–4.3 d; CPA alone suppresses T 50–70%, ~95% with estrogen; low doses near-maximal", "tertiary",
+        ),
+        EvidenceSource(
+            "maggacis2025_gel", "Serum Estradiol Concentrations With Estradiol 0.06% Gel in Transgender and Gender-Diverse Adults",
+            "Maggacis, Cheung, Nolan", 2025, "doi 10.1111/cen.15217, Clinical Endocrinology",
+            "81 adults; median E2 285 pmol/L (78 pg/mL) on 1.5 mg/d (n=66), 529 pmol/L (144 pg/mL) on 3 mg/d (n=17); weak dose correlation (r=0.23). Immunoassay; time since the last dose and application site not recorded. Cites postmenopausal data: 68 pg/mL on 1.5 mg/d, 103 pg/mL on 3 mg/d.", "retrospective cohort",
+        ),
+        EvidenceSource(
+            "fda_divigel_p04003", "Divigel (estradiol gel 0.1%) NDA 22-038 — Clinical Pharmacology and Biopharmaceutics Review, study P04-003",
+            "US FDA, CDER", 2007, "accessdata.fda.gov, NDA 022038",
+            "Postmenopausal women, 14 daily doses; day-14 Cavg 9.8 / 21 / 30.5 pg/mL and Cmax 14.7 / 28.4 / 51.5 pg/mL on 0.25 / 0.5 / 1.0 mg; median tmax 8–16 h; accumulation 1.75–2.1; CV 84–149%.", "regulatory review, multiple-dose PK",
         ),
     )
 
@@ -100,6 +110,10 @@ object EvidenceBundleV1 {
         addAll(oneComp(Route.SUBLINGUAL, "sl", scale = 1111.0, ka = 18.0, ke = 9.9, swallowed = 0.4, evidence = setOf("doll2022")))
         // sublingual also needs the swallowed fraction routed through the oral params:
         addAll(oneComp(Route.SUBLINGUAL, "oral", scale = 98.6, ka = 3.5, ke = 1.28, swallowed = null, evidence = oralEvidence))
+
+        // Gel: steady-state average ≈ 45 pg/mL per mg/day over the baseline (scale × (1/ke − 1/ka)), about twofold
+        // accumulation (t½ 24 h) and a peak 8–9 h after the dose. The amount is mg of estradiol, not grams of gel.
+        addAll(oneComp(Route.GEL, "gel", scale = 34.5, ka = 7.2, ke = 0.693, swallowed = null, evidence = setOf("maggacis2025_gel", "fda_divigel_p04003")))
 
         // ── TT PK/PD (non-route-scoped) ──
         // E2→T Hill calibrated to Seifert 2025: injectable monotherapy at E2 ~232 pg/mL → T ~17 ng/dL.

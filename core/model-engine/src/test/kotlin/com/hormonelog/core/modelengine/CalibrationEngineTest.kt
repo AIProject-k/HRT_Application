@@ -185,15 +185,15 @@ class CalibrationEngineTest {
         val at = doses.last().occurredAt.plus(3, ChronoUnit.DAYS)
         val gel = DoseEvent(
             id = UUID.randomUUID(),
-            // A route with no evidence-backed model, given between the last injection
-            // and the draw, so the measured value carries exposure the prediction cannot.
+            // A patch of unknown strength, worn between the last injection and the draw,
+            // so the measured value carries exposure the prediction cannot.
             occurredAt = at.minus(2, ChronoUnit.DAYS),
             sourceZoneId = "UTC",
-            drug = Drug.ESTRADIOL_GEL,
-            route = Route.GEL,
-            amountEntered = 2.0,
-            enteredUnit = DoseUnit.MG,
-            normalizedMilligrams = 2.0,
+            drug = Drug.ESTRADIOL_PATCH,
+            route = Route.PATCH,
+            amountEntered = 1.0,
+            enteredUnit = DoseUnit.PATCH,
+            normalizedMilligrams = null,
             status = DoseStatus.ADMINISTERED,
         )
         val lab = e2Lab(at, 400.0)
@@ -207,16 +207,48 @@ class CalibrationEngineTest {
     }
 
     @Test
-    fun aGelDoseFromLongAgoNoLongerSpoilsEveryLab() {
+    fun anUnmodelledDoseFromLongAgoNoLongerSpoilsEveryLab() {
         val doses = evDoses()
         val longAgoGel = DoseEvent(
-            UUID.randomUUID(), start.minus(60, ChronoUnit.DAYS), "UTC", Drug.ESTRADIOL_GEL,
-            Route.GEL, 2.0, DoseUnit.MG, 2.0, DoseStatus.ADMINISTERED,
+            UUID.randomUUID(), start.minus(60, ChronoUnit.DAYS), "UTC", Drug.ESTRADIOL_PATCH,
+            Route.PATCH, 1.0, DoseUnit.PATCH, null, DoseStatus.ADMINISTERED,
         )
         val at = start.plus(40, ChronoUnit.DAYS)
         val lab = e2Lab(at, e2.medianAt(doses, at)!! * 1.1)
 
         assertTrue(engine.calibrate(doses + longAgoGel, listOf(lab)).includedLabIds.contains(lab.id))
+    }
+
+    @Test
+    fun aGelLabCorrectsOnlyTheGelCurve() {
+        val gel = (0 until 30).map {
+            DoseEvent(
+                UUID.randomUUID(), start.plus(it.toLong(), ChronoUnit.DAYS), "UTC", Drug.ESTRADIOL_GEL,
+                Route.GEL, 1.5, DoseUnit.MG, 1.5, DoseStatus.ADMINISTERED,
+            )
+        }
+        val at = gel.last().occurredAt.plus(8, ChronoUnit.HOURS)
+        val r = engine.calibrate(gel, listOf(e2Lab(at, (e2.medianAt(gel, at)!! - 5.0) * 1.5 + 5.0)))
+
+        assertEquals(setOf(CalibrationGroup.GEL), r.groups.keys)
+        assertEquals(1.5, r.groups.getValue(CalibrationGroup.GEL).scale, 1e-6)
+    }
+
+    @Test
+    fun eachLabIsJudgedAgainstWhatTheLabsBeforeItPredicted() {
+        val doses = evDoses()
+        fun lab(day: Long, factor: Double): LabResult {
+            val at = start.plus(day, ChronoUnit.DAYS)
+            return e2Lab(at, (e2.medianAt(doses, at)!! - 5.0) * factor + 5.0)
+        }
+        // Both labs run 40% above the literature curve. The first is a 40% miss; once it is known, the second is none.
+        val labs = listOf(lab(45, 1.4), lab(31, 1.4))
+        val errors = engine.predictionErrors(engine.calibrate(doses, labs), labs).getValue(CalibrationGroup.INJECTION)
+
+        assertEquals(2, errors.size)
+        assertTrue("first ${errors[0]}", errors[0] in 0.35..0.40)
+        assertEquals(0.0, errors[1], 1e-6)
+        assertTrue(engine.predictionErrors(engine.calibrate(doses, emptyList()), emptyList()).isEmpty())
     }
 
     @Test

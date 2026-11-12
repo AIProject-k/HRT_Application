@@ -16,7 +16,7 @@ pharmacokinetic models in the published literature; log a real lab value and it
 personalised the curve becomes.
 
 - **Original records stay on the device** — regular logging works offline without an account. Chat uses Kotlin rules and an optionally installed model (Qwen3-0.6B or Gemma 4 E2B) locally; only model installation and a user-tapped update check (Me › 업데이트 확인) use the internet
-- **Only draws what it can source** — a route gets a curve only when every parameter has provenance; the rest (gel) is left off the curve, and the app says why
+- **Only draws what it can source** — a route gets a curve only when every parameter has provenance; a record it cannot model is left off the curve, and the app says why
 - **Never blends estimates with measurements** — an estimate is a teal band, a measurement a yellow diamond, always
 
 **⚠️ Reference tool only.** The projected curves are *population approximations* derived
@@ -76,7 +76,7 @@ Multi-module Gradle:
 | `core:data` | Local JSON file persistence (`org.json`), backup files, CSV I/O |
 
 - All state transitions are pure functions (the clock is passed in); only transitions that need persistence are written to file by the `ViewModel`. Writes happen off the main thread, one at a time, and a failed write is shown on screen
-- A curve is drawn only when the evidence bundle has provenance for its parameters — gel evidence is thin, so it is kept off the curve and only recorded
+- A curve is drawn only when the evidence bundle has provenance for its parameters — gel varies most between people, so it gets the widest interval (±60%)
 - Records this build cannot read (written by a newer build, or holding a date or number no real log could hold) are not loaded and not deleted: they are kept and written back. "Delete all records" removes them too
 - Model parameters, sources, and review notes: [docs/evidence/README.md](docs/evidence/README.md)
 

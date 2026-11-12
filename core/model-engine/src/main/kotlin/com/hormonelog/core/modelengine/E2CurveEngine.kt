@@ -26,7 +26,7 @@ typealias Adjustments = Map<CalibrationGroup, Adjustment>
  * uncertainty interval — never a bare number — and is a literature-based
  * population estimate, not a clinically validated prediction.
  *
- * A dose the model cannot describe (gel, a patch of unknown strength) is left out and
+ * A dose the model cannot describe (a patch of unknown strength) is left out and
  * reported in [EstimateResult.Available.excluded]; it never silently counts as zero and
  * never hides the doses that can be modelled.
  */

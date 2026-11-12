@@ -24,6 +24,7 @@ object SteadyState {
         CalibrationGroup.INJECTION -> 21
         CalibrationGroup.PATCH -> 14
         CalibrationGroup.ORAL -> 7
+        CalibrationGroup.GEL -> 7
         null -> 0
     }
 

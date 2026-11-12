@@ -194,8 +194,8 @@ fun DoseSheet(doses: List<DoseEvent>, draft: DoseDraft, fmt: Fmt, actions: DoseS
             if (draft.isGel) {
                 HlBanner(HlNotice.Warn) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        HlText("곡선 없음 · 젤 모델 미지원", size = HlSize.t13, weight = FontWeight.Bold, color = c.orange)
-                        HlText("젤은 흡수 편차를 다룬 근거가 부족해 예상 곡선을 그리지 않아요. 기록은 저장되고 타임라인에 보여요.", size = HlSize.t13, lineHeight = 1.5f)
+                        HlText("젤 무게가 아니라 에스트라디올 mg으로 적어요", size = HlSize.t13, weight = FontWeight.Bold, color = c.orange)
+                        HlText("0.06% 젤은 펌프 한 번(1.25 g)이 0.75 mg, 0.1% 젤은 1 g이 1 mg이에요. 젤은 바르는 부위와 사람에 따라 흡수 차이가 커서 곡선 범위를 넓게 그려요.", size = HlSize.t13, lineHeight = 1.5f)
                     }
                 }
             }

@@ -93,7 +93,7 @@ object ReportLogic {
             labs = if (labRows) e2Labs.mapNotNull { labRow(it, s, calibration, fmt) } else null,
             labsNote = if (labRows) ttNote(s, inPeriod, fmt) else null,
             adherence = if (ReportPart.ADHERENCE in include) adherence(doses, fmt) else null,
-            model = if (ReportPart.MODEL in include) modelLines(s, doses, calibration) else null,
+            model = if (ReportPart.MODEL in include) modelLines(s, calibration) else null,
             memos = if (ReportPart.MEMOS in include) s.memos.filter { inPeriod(it.date.atTime(12, 0).atZone(zone).toInstant()) }.map {
                 ReportMemoRow(fmt.date(it.date.atTime(12, 0).atZone(zone).toInstant()), it.title, it.body.trim().take(240), it.prescription)
             } else null,
@@ -168,6 +168,7 @@ object ReportLogic {
         CalibrationGroup.INJECTION -> "주사"
         CalibrationGroup.ORAL -> "경구·설하"
         CalibrationGroup.PATCH -> "패치"
+        CalibrationGroup.GEL -> "젤"
     }
 
     private fun kindOf(d: DoseEvent): String = when (d.route) {
@@ -193,7 +194,7 @@ object ReportLogic {
         }
     }
 
-    private fun modelLines(s: AppState, doses: List<DoseEvent>, calibration: CalibrationResult): List<String> {
+    private fun modelLines(s: AppState, calibration: CalibrationResult): List<String> {
         val lines = ArrayList<String>()
         calibration.groups.entries.sortedBy { it.key.ordinal }.forEach { (g, cal) ->
             val pct = ((cal.scale - 1.0) * 100).roundToInt()
@@ -205,8 +206,6 @@ object ReportLogic {
         }
         calibration.tt?.let { lines += "Total T: 검사 ${it.labCount}건으로 ${((it.scale - 1.0) * 100).roundToInt().let { p -> if (p >= 0) "+$p" else "$p" }}% 보정" }
         if (lines.isEmpty()) lines += "보정 없이 문헌 평균으로 그렸어요"
-        val gel = doses.count { it.route == Route.GEL }
-        if (gel > 0) lines += "젤 기록 ${gel}건은 곡선 계산에서 제외"
         if (s.settings.gonadalStatus == GonadalStatus.DECLINED) lines += "Total T 곡선은 그리지 않았어요"
         return lines
     }

@@ -44,7 +44,7 @@ import com.hormonelog.core.modelengine.CalibrationGroup
 import kotlin.math.roundToInt
 
 private enum class Part(val label: String) {
-    INJECTION("주사 · EV"), ORAL("경구"), SUBLINGUAL("설하"), PATCH("패치"), ANTIANDROGEN("항안드로겐"), P4("P4 경구")
+    INJECTION("주사 · EV"), ORAL("경구"), SUBLINGUAL("설하"), PATCH("패치"), GEL("젤"), ANTIANDROGEN("항안드로겐"), P4("P4 경구")
 }
 
 private val PARAMETER_NAMES = mapOf(
@@ -58,6 +58,9 @@ private val PARAMETER_NAMES = mapOf(
     "slScale" to "설하 노출 배율",
     "slKa" to "설하 흡수 속도 (ka)",
     "slKe" to "설하 제거 속도 (ke)",
+    "gelScale" to "젤 노출 배율",
+    "gelKa" to "젤 흡수 속도 (ka)",
+    "gelKe" to "젤 제거 속도 (ke)",
     "slSwallowed" to "삼켜서 흡수되는 비율",
     "ttBaselineIntact" to "Total T 출발점 (고환 있음)",
     "ttBaselinePostOrchi" to "Total T 출발점 (수술 후)",
@@ -79,6 +82,7 @@ private val LIMITS = mapOf(
     Part.ORAL to "음식·복용 시각의 영향을 반영하지 않아요. 0–8시간 자료에서 그 뒤 구간을 이어 그렸어요.",
     Part.SUBLINGUAL to "삼키는 비율(약 40%)은 평균값이에요. 개인차가 커서 범위를 넓게 잡아요.",
     Part.PATCH to "피부 상태·부착 부위 차이와, 붙이고 떼는 시점은 반영하지 않아요. 규격 표기값(µg/일)을 그대로 써요.",
+    Part.GEL to "바르는 부위·면적·씻는 시각과 사람마다 다른 피부 흡수는 반영하지 않아요. 폐경 여성과 트랜스젠더 성인의 평균값에 맞춘 근사라 범위를 가장 넓게(±60%) 잡아요.",
     Part.P4 to com.hormonelog.core.evidence.ProgesteroneEvidence.LIMITS,
     Part.ANTIANDROGEN to "Total T 범위가 넓게 나와요. 경구·설하만 쓸 때는 낮게 나오는 경향이 있어요. 검사로 확인이 필요해요.",
 )
@@ -121,10 +125,11 @@ fun EvidenceScreen(s: AppState, fmt: Fmt, onBack: () -> Unit) {
         Part.ORAL -> bundle.parameters.filter { it.route == Route.ORAL }
         Part.SUBLINGUAL -> bundle.parameters.filter { it.route == Route.SUBLINGUAL && it.name.startsWith("sl") }
         Part.PATCH -> bundle.parameters.filter { it.route == Route.PATCH }
+        Part.GEL -> bundle.parameters.filter { it.route == Route.GEL }
         Part.ANTIANDROGEN -> bundle.parameters.filter { it.route == null }
         Part.P4 -> bundle.parameters
     }
-    val group = when (part) { Part.INJECTION -> CalibrationGroup.INJECTION; Part.ORAL, Part.SUBLINGUAL -> CalibrationGroup.ORAL; Part.PATCH -> CalibrationGroup.PATCH; Part.ANTIANDROGEN, Part.P4 -> null }
+    val group = when (part) { Part.INJECTION -> CalibrationGroup.INJECTION; Part.ORAL, Part.SUBLINGUAL -> CalibrationGroup.ORAL; Part.PATCH -> CalibrationGroup.PATCH; Part.GEL -> CalibrationGroup.GEL; Part.ANTIANDROGEN, Part.P4 -> null }
     val personal = group?.let { calibration.groups[it] }
 
     Column(Modifier.fillMaxWidth()) {
@@ -133,7 +138,7 @@ fun EvidenceScreen(s: AppState, fmt: Fmt, onBack: () -> Unit) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.card).padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 HlText("지금 곡선", size = HlSize.t12, color = c.muted)
                 HlText("근거 묶음 ${bundle.version} · 출처 ${bundle.sources.size}개", size = HlSize.t14, weight = FontWeight.Bold)
-                HlText("주사·패치는 3구획 모델, 경구·설하는 1구획 모델이에요. 검사로 경로마다 배율을 보정해요.", size = HlSize.t12, color = c.muted, lineHeight = 1.5f)
+                HlText("주사·패치는 3구획 모델, 경구·설하·젤은 1구획 모델이에요. 검사로 경로마다 배율을 보정해요.", size = HlSize.t12, color = c.muted, lineHeight = 1.5f)
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Part.entries.forEach { p -> HlChip(p.label, part == p, { part = p }, minHeight = 44.dp, size = HlSize.t13, shape = RoundedCornerShape(999.dp), padding = PaddingValues(horizontal = 14.dp)) }
@@ -157,7 +162,7 @@ fun EvidenceScreen(s: AppState, fmt: Fmt, onBack: () -> Unit) {
 
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HlRadius.card)).background(c.orangeSoft).padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 HlText("곡선을 그리지 않는 경우", size = HlSize.t14, weight = FontWeight.Bold, color = c.orange)
-                HlText("· 젤: 흡수 편차를 다룬 근거가 부족해요\n· 고환 정보를 '말하고 싶지 않음'으로 둔 경우: Total T 곡선을 숨겨요\n· 기록 시작 후 2주 미만: 검사값을 보정에 쓰지 않아요", size = HlSize.t13, lineHeight = 1.6f)
+                HlText("· 규격을 모르는 패치, 경로와 맞지 않는 약물: 기록만 남겨요\n· 고환 정보를 '말하고 싶지 않음'으로 둔 경우: Total T 곡선을 숨겨요\n· 기록 시작 후 2주 미만: 검사값을 보정에 쓰지 않아요", size = HlSize.t13, lineHeight = 1.6f)
             }
 
             HlSectionLabel("출처 목록")
