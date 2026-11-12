@@ -233,7 +233,7 @@ private fun ScreenHost(vm: AppViewModel, s: AppState, fmt: Fmt) {
         Screen.ME -> {
             val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "" }
             MeScreen(
-                s, fmt, version,
+                s, fmt, version, vm.updater.ui,
                 MeActions(
                     theme = { m -> vm.act { SettingsOps.theme(it, m) } },
                     fontScale = { f -> vm.act { SettingsOps.fontScale(it, f) } },
@@ -251,6 +251,7 @@ private fun ScreenHost(vm: AppViewModel, s: AppState, fmt: Fmt) {
                     security = { vm.act { Nav.push(it, Screen.SECURITY) } },
                     evidence = { vm.act { Nav.push(it, Screen.EVIDENCE) } },
                     licenses = { vm.act { Nav.push(it, Screen.LICENSES) } },
+                    update = vm.updater::tap,
                     deleteAll = { vm.act { Nav.ask(it, Confirm.ClearAll) } },
                 ),
             )

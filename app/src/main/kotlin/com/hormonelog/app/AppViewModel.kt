@@ -74,6 +74,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     val chatSetup = com.hormonelog.app.chat.LocalChatController(app, viewModelScope) { state }
+    val updater = com.hormonelog.app.platform.AppUpdater(app, viewModelScope)
     val chat = com.hormonelog.app.chat.ChatSession({ state }, { next, done ->
         state = next
         persistRecords(next, done)
@@ -119,6 +120,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         chat.suspendRequest()
         chatSetup.dispose()
+        updater.dispose()
         if (ViewModelHolder.current === this) ViewModelHolder.current = null
         super.onCleared()
     }

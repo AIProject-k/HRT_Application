@@ -15,7 +15,7 @@ pharmacokinetic models in the published literature; log a real lab value and it
 **calibrates that curve to your own body**. The more lab values you add, the more
 personalised the curve becomes.
 
-- **Original records stay on the device** — regular logging works offline without an account. Chat uses Kotlin rules and an optionally installed model (Qwen3-0.6B or Gemma 4 E2B) locally; only model installation requires internet
+- **Original records stay on the device** — regular logging works offline without an account. Chat uses Kotlin rules and an optionally installed model (Qwen3-0.6B or Gemma 4 E2B) locally; only model installation and a user-tapped update check (Me › 업데이트 확인) use the internet
 - **Only draws what it can source** — a route gets a curve only when every parameter has provenance; the rest (gel) is left off the curve, and the app says why
 - **Never blends estimates with measurements** — an estimate is a teal band, a measurement a yellow diamond, always
 
