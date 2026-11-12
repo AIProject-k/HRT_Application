@@ -11,7 +11,7 @@ import com.hormonelog.core.domain.Drug
  * A time that sits only in segments without any drug is a common value for the list. Single-drug text needs no binding.
  */
 internal object ChatBinding {
-    private val separator = Regex("[\\n,;]|(?<=[가-힣0-9a-zA-Z])[.!](?=\\s|$)")
+    private val separator = Regex("[\\n,;]|(?<=mg)\\s*(?:이랑|랑|하고|와|과)|그리고|(?<=[가-힣0-9a-zA-Z])[.!](?=\\s|$)")
     private val closer = Regex("맞고|맞았|맞음|맞은|먹었|먹엇|먹음|먹고|복용했|복용함|복용|근육주사|피하주사|경구|설하")
 
     /**
@@ -40,7 +40,7 @@ internal object ChatBinding {
     private fun drugMentions(s: AppState, text: String): List<Mention> {
         val found = ChatCommands.drugNames(s).flatMap { name ->
             val drug = ChatCommands.knownDrug(s, name)?.drug ?: return@flatMap emptyList()
-            Regex(Regex.escape(name.lowercase())).findAll(text).map { Mention(it.range.first, it.range.last + 1, drug) }.toList()
+            Regex(ChatCommands.namePattern(name.lowercase())).findAll(text).map { Mention(it.range.first, it.range.last + 1, drug) }.toList()
         }.sortedByDescending { it.end - it.start }
         val kept = mutableListOf<Mention>()
         for (m in found) if (kept.none { it.start < m.end && m.start < it.end }) kept += m

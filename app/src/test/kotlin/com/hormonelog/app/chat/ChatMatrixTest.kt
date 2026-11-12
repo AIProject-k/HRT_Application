@@ -90,7 +90,8 @@ class ChatMatrixTest {
         one("M54", "오늘 09:00 프로기노바 2mg 복용\n오늘 09:00 프로기노바 2mg 복용", none),
         one("M55", "오늘 09:00 프로기노바 2mg 복용\n오늘 21:00 프로기노바 2mg 복용", Want(doses = listOf(
             Dose(Drug.ESTRADIOL_TABLET, 2.0, "2026-10-24 09:00"), Dose(Drug.ESTRADIOL_TABLET, 2.0, "2026-10-24 21:00")))),
-        one("M56", "방금 프로기노바 2mg과 안쿨 25mg 복용", noneModelAllowed),
+        one("M56", "방금 프로기노바 2mg과 안쿨 25mg 복용", Want(doses = listOf(
+            Dose(Drug.ESTRADIOL_TABLET, 2.0, "2026-10-24 23:00"), Dose(Drug.CYPROTERONE, 25.0, "2026-10-24 23:00")))),
         one("M57", "오늘 10:00 E2 100pg/mL 검사 기록해줘", Want(labs = listOf(LabRec(Analyte.ESTRADIOL, 100.0, "pg/mL")))),
         one("M58", "오늘 머리가 아프고 피곤했어 메모해줘", none),
         one("M59", "몸무게 60kg 기록해줘", none),

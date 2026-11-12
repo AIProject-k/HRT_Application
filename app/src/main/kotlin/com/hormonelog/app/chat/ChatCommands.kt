@@ -26,10 +26,13 @@ object ChatCommands {
     val readActions = setOf("recent", "status", "lab_results", "next_injection")
     private fun compact(s: String) = s.lowercase().replace(Regex("\\s+"), "")
     private val drugs = mapOf(
-        "ev" to Drug.ESTRADIOL_VALERATE, "에스트라디올발레레이트" to Drug.ESTRADIOL_VALERATE,
-        "ec" to Drug.ESTRADIOL_CYPIONATE, "에스트라디올사이피오네이트" to Drug.ESTRADIOL_CYPIONATE,
-        "에스트라디올" to Drug.ESTRADIOL_TABLET, "프로기노바" to Drug.ESTRADIOL_TABLET,
-        "스피로노락톤" to Drug.SPIRONOLACTONE, "사이프로테론" to Drug.CYPROTERONE,
+        "ev" to Drug.ESTRADIOL_VALERATE, "에스트라디올발레레이트" to Drug.ESTRADIOL_VALERATE, "발레레이트" to Drug.ESTRADIOL_VALERATE,
+        "프로기노바데포" to Drug.ESTRADIOL_VALERATE,
+        "ec" to Drug.ESTRADIOL_CYPIONATE, "에스트라디올사이피오네이트" to Drug.ESTRADIOL_CYPIONATE, "사이피오네이트" to Drug.ESTRADIOL_CYPIONATE,
+        "에스트라디올" to Drug.ESTRADIOL_TABLET, "프로기노바" to Drug.ESTRADIOL_TABLET, "프레다" to Drug.ESTRADIOL_TABLET,
+        "에스트로펨" to Drug.ESTRADIOL_TABLET,
+        "스피로노락톤" to Drug.SPIRONOLACTONE, "스피로" to Drug.SPIRONOLACTONE, "알닥톤" to Drug.SPIRONOLACTONE,
+        "사이프로테론" to Drug.CYPROTERONE, "cpa" to Drug.CYPROTERONE,
         "안쿨" to Drug.CYPROTERONE, "안드로쿨" to Drug.CYPROTERONE, "안드로쿨정" to Drug.CYPROTERONE,
         "androcur" to Drug.CYPROTERONE, "시프로테론" to Drug.CYPROTERONE,
         "시프로테론아세테이트" to Drug.CYPROTERONE, "cyproterone" to Drug.CYPROTERONE,
@@ -39,9 +42,19 @@ object ChatCommands {
         "메드록시프로게스테론아세테이트" to Drug.MEDROXYPROGESTERONE_ACETATE, "medroxyprogesterone" to Drug.MEDROXYPROGESTERONE_ACETATE,
         "provera" to Drug.MEDROXYPROGESTERONE_ACETATE,
     )
-    private val routes = mapOf("근육주사" to Route.IM_INJECTION, "im" to Route.IM_INJECTION,
-        "피하주사" to Route.SC_INJECTION, "sc" to Route.SC_INJECTION, "경구" to Route.ORAL,
-        "먹었어" to Route.ORAL, "복용" to Route.ORAL, "설하" to Route.SUBLINGUAL)
+    private val routes = mapOf("근육주사" to Route.IM_INJECTION, "근육" to Route.IM_INJECTION, "근주" to Route.IM_INJECTION, "im" to Route.IM_INJECTION,
+        "피하주사" to Route.SC_INJECTION, "피하" to Route.SC_INJECTION, "sc" to Route.SC_INJECTION, "경구" to Route.ORAL,
+        "먹었어" to Route.ORAL, "복용" to Route.ORAL, "설하" to Route.SUBLINGUAL, "혀밑" to Route.SUBLINGUAL)
+
+    /** Route words as people write them, with or without a space; the longer form is tried first. */
+    internal const val ROUTE_WORDS = "근육\\s*주사|근육|근주|피하\\s*주사|피하|경구|설하|혀\\s*밑|(?<![a-z])im(?![a-z])|(?<![a-z])sc(?![a-z])"
+
+    /** Words that say a dose was taken or should be recorded. */
+    internal const val RECORD_WORDS = "기록|등록|저장|추가|맞았|맞고|맞음|맞은|먹음|먹었|먹엇|먹은|먹고|복용|투약|녹였|삼켰"
+
+    /** A drug name as a pattern that also matches when it is written with spaces, as in "에스트라디올 발레레이트". */
+    internal fun namePattern(name: String): String =
+        name.filterNot(Char::isWhitespace).map { Regex.escape(it.toString()) }.joinToString("\\s*")
 
     fun knownDrug(s: AppState, token: String): ChatMemory.Alias? {
         val name = compact(token)
@@ -99,7 +112,7 @@ object ChatCommands {
         if (c.action !in setOf("dose", "lab")) return ask("투약·검사 등록과 현재 상태·검사·최근 기록 조회를 지원해요.")
         val text = compact(inputs.joinToString("\n"))
         val additional = inputs.any { Regex("도(?:\\s*(?:기록해줘|등록해줘|추가해줘))?[.!?]?$|같은\\s*시간").containsMatchIn(it.trim()) }
-        if ((mode == ChatInputMode.RECORD && !Regex("기록|등록|저장|추가|맞았|맞고|맞음|맞은|먹음|먹었|먹엇|먹은|먹고|복용").containsMatchIn(text) && !(additional && previousDoseAt != null)) ||
+        if ((mode == ChatInputMode.RECORD && !Regex(if (c.action == "lab") "$RECORD_WORDS|나왔|검사|채혈|결과" else RECORD_WORDS).containsMatchIn(text) && !(additional && previousDoseAt != null)) ||
             (mode != ChatInputMode.TEMPLATE && ChatIntents.blocks(s, knownDrug(s, c.drug)?.drug, inputs))) {
             return refuse("실제로 투약하거나 검사한 내용을 등록할 때 ‘기록해줘’라고 말씀해 주세요.")
         }
@@ -157,12 +170,13 @@ object ChatCommands {
             // Provera is oral only, so the oral default must not turn an injection sentence into an oral dose.
             if (drug == Drug.MEDROXYPROGESTERONE_ACETATE && parsedRoute != Route.ORAL && Regex("주사|근육|피하|데포|맞았|맞음|맞은|맞고|질정|패치|젤").containsMatchIn(text))
                 return ask("프로베라는 경구로만 기록할 수 있어요. 주사나 다른 경로의 기록은 저장하지 않았어요.")
-            val oral = if (Regex("복용|먹었|먹엇|먹은|먹음|먹고").containsMatchIn(text) || drug in setOf(Drug.CYPROTERONE, Drug.SPIRONOLACTONE, Drug.MEDROXYPROGESTERONE_ACETATE)) Route.ORAL else null
+            val oral = if (Regex("복용|먹었|먹엇|먹은|먹음|먹고|삼켰").containsMatchIn(text) || drug in setOf(Drug.CYPROTERONE, Drug.SPIRONOLACTONE, Drug.MEDROXYPROGESTERONE_ACETATE)) Route.ORAL else null
             val route = parsedRoute ?: plan?.route ?: oral ?: return ask("투여 경로만 알려주세요. 예: 근육주사, 피하주사, 경구, 설하.")
             if (c.amount.isBlank() && plan == null) return ask("${c.drug.ifBlank { drug.label }} 용량은 몇 mg인가요? 실제 복용량을 ‘숫자+mg’ 형태로 알려주세요.")
             val amountMatch = Regex("([0-9]+(?:\\.[0-9]+)?)(mg)?").matchEntire(compact(c.amount))
             if (amountMatch != null && amountMatch.groupValues[2].isBlank() && compact(c.amountUnit) != "mg") return ask("${c.drug} ${c.amount}의 단위만 알려주세요. 예: ‘mg’.")
             if (c.amountUnit.isNotBlank() && compact(c.amountUnit) != "mg") return ask("이 기록은 mg 단위 용량이 필요해요. 정·알·mL를 mg으로 추측하지 않아요.")
+            if (Regex("[0-9.]+(?:정|알)").matches(compact(c.amount))) return ask("정·알 개수는 mg으로 바꾸지 않아요. 실제 복용량을 ‘숫자+mg’ 형태로 알려주세요.")
             if (amountMatch != null && amountMatch.groupValues[2].isBlank() && !grounded("${c.amount} mg")) {
                 val clarified = inputs.any { input ->
                     val t = compact(input)
@@ -201,7 +215,7 @@ object ChatCommands {
             val unit = compact(v.unit)
             val a = when (compact(v.analyte)) {
                 "e2", "에스트라디올" -> Analyte.ESTRADIOL
-                "totalt", "tt", "총테스토스테론" -> Analyte.TOTAL_TESTOSTERONE
+                "totalt", "tt", "총테스토스테론", "테스토스테론" -> Analyte.TOTAL_TESTOSTERONE
                 "p4", "프로게스테론" -> Analyte.PROGESTERONE
                 else -> return ask("검사 항목은 E2, Total T, P4를 지원해요.")
             }
