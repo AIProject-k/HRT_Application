@@ -22,7 +22,7 @@ class MpaChartTest {
     private fun curvesFor(doses: List<DoseEvent>, regimens: List<Regimen> = emptyList(), labs: List<LabResult> = emptyList(), to: Instant = now) =
         Analysis.curves(doses, regimens, labs, GonadalStatus.DECLINED, now, from, to, SEOUL)
 
-    @Test fun anMpaOnlyHistoryGivesTheMpaTabItsOwnTicksAndNoOtherCurve() {
+    @Test fun anMpaOnlyHistoryGivesTheMpaTabItsOwnTicksAndPercentCurveAndNoOtherCurve() {
         val doses = listOf(mpa)
         val curves = curvesFor(doses)
         assertNull(curves.e2)
@@ -30,7 +30,10 @@ class MpaChartTest {
         assertNull(curves.p4)
         val mpaTab = chartModelFor(HormoneSeries.MPA, curves, doses, emptyList(), from, now, now, false)
         assertTrue(mpaTab.isMpa)
-        assertNull(mpaTab.curve)
+        assertTrue(curves.mpaRelative)
+        // Three hours after one 10 mg tablet the level is just past its peak, which is the 100% mark.
+        assertEquals(100.0, mpaTab.curve!!.points.last().median, 2.0)
+        assertTrue(mpaHeadline(curves).contains("ng/mL) 아님"))
         assertEquals(listOf(TickState.TAKEN), mpaTab.doses.map { it.state })
         assertTrue(chartModelFor(HormoneSeries.E2, curves, doses, emptyList(), from, now, now, false).doses.isEmpty())
     }
@@ -58,11 +61,11 @@ class MpaChartTest {
         assertTrue(mpaTab.labs.isEmpty())
     }
 
-    @Test fun aRecordTheModelRefusesStillShowsTheEvidenceReasonFirst() {
+    @Test fun aDoseAboveEveryTableReadIsKeptOnRecordAndNotDrawn() {
         val tooLarge = dose(now.minusSeconds(3600), Drug.MEDROXYPROGESTERONE_ACETATE, Route.ORAL, 50.0)
         val curves = curvesFor(listOf(tooLarge))
-        assertEquals(ModelStatus.Unavailable(ModelReason.EVIDENCE_INSUFFICIENT, EvidenceStage.PK_SUMMARY), curves.mpaStatus)
-        assertTrue(mpaHeadline(curves).contains("근거 검증 중"))
+        assertEquals(ModelStatus.Unavailable(ModelReason.UNSUPPORTED_RECORDS, EvidenceStage.PK_SUMMARY), curves.mpaStatus)
+        assertTrue(mpaHeadline(curves).contains("지원 밖"))
     }
 
     @Test fun theMpaLineNamesItsReasonAndNeverShowsANumber() {

@@ -14,7 +14,6 @@ class MpaPathTest {
     private val mpa = dose(now.minusSeconds(86400), Drug.MEDROXYPROGESTERONE_ACETATE, Route.ORAL, 10.0)
     private val estrogen = dose(now.minusSeconds(2 * 86400), Drug.ESTRADIOL_VALERATE, Route.IM_INJECTION, 5.0)
     private val progesterone = dose(now.minusSeconds(7200), Drug.PROGESTERONE_MICRONIZED, Route.ORAL, 200.0)
-    private val unvalidated = ModelStatus.Unavailable(ModelReason.EVIDENCE_INSUFFICIENT, EvidenceStage.PK_SUMMARY)
 
     @Test fun mpaOnlyHistoryDrawsNoE2TtOrP4AndReportsItsOwnStatus() {
         val curves = Analysis.curves(listOf(mpa), emptyList(), emptyList(), GonadalStatus.INTACT, now, now.minusSeconds(86400), now, SEOUL)
@@ -22,7 +21,10 @@ class MpaPathTest {
         assertNull(curves.tt)
         assertNull(curves.p4)
         assertTrue(curves.planned.isEmpty())
-        assertEquals(unvalidated, Analysis.mpaStatus(listOf(mpa), now))
+        val status = Analysis.mpaStatus(listOf(mpa), now) as ModelStatus.Available
+        assertTrue(status.relative)
+        // A day after one 10 mg tablet, two half-lives on, about a third of its peak is left.
+        assertEquals(31.0, status.series.points.last().median, 3.0)
     }
 
     @Test fun mpaRecordsLeaveTheE2TtAndP4CurvesExactlyAsTheyWere() {
@@ -45,11 +47,14 @@ class MpaPathTest {
         assertTrue(Analysis.planned(listOf(schedule), emptyList(), now, until, SEOUL).isEmpty())
     }
 
-    @Test fun everyRecordableMpaAmountGetsTheSameUnvalidatedAnswer() {
-        for (mg in listOf(2.5, 5.0, 10.0, 20.0)) {
+    @Test fun everyRecordableMpaAmountIsDrawnInPercentInProportionToItsDose() {
+        fun percentAnHourAfter(mg: Double): Double {
             val record = dose(now.minusSeconds(3600), Drug.MEDROXYPROGESTERONE_ACETATE, Route.ORAL, mg)
-            assertEquals(unvalidated, Analysis.mpaStatus(listOf(record), now))
+            val status = Analysis.mpaStatus(listOf(record), now) as ModelStatus.Available
+            assertTrue(status.relative)
+            return status.series.points.last().median
         }
+        for (mg in listOf(2.5, 5.0, 20.0)) assertEquals(percentAnHourAfter(10.0) * mg / 10.0, percentAnHourAfter(mg), 1e-9)
     }
 
     @Test fun aSkippedMpaDoseIsNoData() {

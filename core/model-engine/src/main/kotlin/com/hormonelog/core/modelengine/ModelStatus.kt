@@ -28,6 +28,8 @@ sealed interface ModelStatus {
         val series: EstimateSeries,
         val excluded: List<ExcludedDose>,
         override val stage: EvidenceStage,
+        /** True when the series is a percentage of one reference dose's peak instead of a concentration. */
+        val relative: Boolean = false,
     ) : ModelStatus
 
     data class Unavailable(val reason: ModelReason, override val stage: EvidenceStage) : ModelStatus

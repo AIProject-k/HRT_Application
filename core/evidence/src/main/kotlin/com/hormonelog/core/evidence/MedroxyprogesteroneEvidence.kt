@@ -18,8 +18,26 @@ data class MpaModelParameters(
             fOverVPerLitre > 0.0 && linearMaxMgPerDose > 0.0 && loqNgPerMl > 0.0
 }
 
+/**
+ * The oral MPA curve without its height. The sources agree on when the peak comes and how fast the level falls, and
+ * disagree on how high it gets, so a curve drawn from this is a share of one [referenceMg] dose's peak, never ng/mL.
+ */
+data class MpaShape(
+    val absorptionPerHour: Double,
+    val eliminationPerHour: Double,
+    /** The single dose whose peak counts as 100%. */
+    val referenceMg: Double,
+    val linearMaxMgPerDose: Double,
+)
+
 /** Evidence the MPA engine runs on. No build ships validated parameters, because no quantitative time series is verified. */
 object MedroxyprogesteroneEvidence {
+    /**
+     * Half-life 12.1 h (Pfizer single dose; 11.6 and 12.9 h in the other single-dose tables) and a peak 2.7 h after the
+     * dose (2.2 to 2.9 h across the tables). Doses above 20 mg are outside every table read, so they are not drawn.
+     */
+    val shape = MpaShape(absorptionPerHour = 1.18, eliminationPerHour = 0.0573, referenceMg = 10.0, linearMaxMgPerDose = 20.0)
+
     /** Null in every shipped build: the sources give summary values, not a time series to fit or check a curve against. */
     val validated: MpaModelParameters? = null
 

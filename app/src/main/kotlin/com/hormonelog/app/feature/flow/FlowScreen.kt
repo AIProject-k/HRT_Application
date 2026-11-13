@@ -302,7 +302,7 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
     val model = if (curves != null) chartModelFor(ui.series, curves, s.doses, s.labs, w.from, w.to, fmt.now, guide = ui.guide) else null
     val isP4 = ui.series == HormoneSeries.P4
     val isMpa = ui.series == HormoneSeries.MPA
-    val unit = if (isP4 || isMpa) "ng/mL" else if (isE2) "pg/mL" else "ng/dL"
+    val unit = if (isMpa) "%" else if (isP4) "ng/mL" else if (isE2) "pg/mL" else "ng/dL"
     val name = if (isP4) "P4 복용분" else if (isE2) "E2" else if (isMpa) "MPA" else "Total T"
     val accent = if (isP4) c.orange else if (isE2) c.teal else if (isMpa) c.violet else c.blue
 
@@ -347,7 +347,7 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
                 size = HlSize.t12, color = c.muted,
             )
             HlText(
-                if (p4 != null) p4Headline(p4, fmt) else if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else if (isMpa) mpaHeadline(curves) else "이 시점 예상값 없음",
+                if (p4 != null) p4Headline(p4, fmt) else if (isMpa && point != null) "한 알(10 mg) 정점의 ${point.median.roundToInt()}% · 농도(ng/mL) 아님" else if (point != null) "예상 $name ${point.median.roundToInt()} $unit · 범위 ${point.lower.roundToInt()}–${point.upper.roundToInt()}" else if (isMpa) mpaHeadline(curves) else "이 시점 예상값 없음",
                 size = HlSize.t16, weight = FontWeight.Bold, color = accent, tabular = true,
             )
             if (near != null) {
@@ -363,7 +363,8 @@ private fun ChartCard(s: AppState, fmt: Fmt, curves: com.hormonelog.app.analysis
             Box(Modifier.fillMaxWidth().aspectRatio(320f / 210f))
         }
         FlowRow(Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            // MPA has no curve and no lab analyte yet, so only its dose marks are explained.
+            if (isMpa && model?.curve != null) LegendRow("모양만 · 한 알(10 mg) 정점 = 100%") { Box(Modifier.size(width = 14.dp, height = 3.dp).background(accent)) }
+            // MPA has no lab analyte and no fitted range, so those marks are not explained for it.
             if (!isMpa) {
                 LegendRow(if (isP4) "복용분 근사 · 범위 미산정" else "예상 · 범위") { Box(Modifier.size(width = 14.dp, height = 8.dp).clip(RoundedCornerShape(4.dp)).background(if (isE2) c.tealSoft else c.blueSoft).border(2.dp, accent, RoundedCornerShape(4.dp))) }
                 LegendRow("실측") { MeasuredMark(8.dp) }

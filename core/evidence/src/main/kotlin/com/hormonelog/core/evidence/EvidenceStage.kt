@@ -1,8 +1,8 @@
 package com.hormonelog.core.evidence
 
 /**
- * How far a model's evidence has been checked. Only [MODEL_VALIDATED] may show numbers. The lower stages record
- * what a source supports without turning it into a curve.
+ * How far a model's evidence has been checked. Only [MODEL_VALIDATED] may show concentrations. From [PK_SUMMARY] on,
+ * a curve may show its shape as a share of one dose's peak, because that needs only the peak time and the half-life.
  */
 enum class EvidenceStage {
     /** Only the citation is known. */

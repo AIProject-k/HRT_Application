@@ -190,7 +190,7 @@ sealed interface RestoreIssue {
 
 enum class ChartRange(val days: Int?) { DAY(1), WEEK(7), MONTH(30), QUARTER(90), HALF(180), YEAR(365), ALL(null), CUSTOM(null) }
 
-/** The chart tabs. MPA has no curve yet: its tab shows the records and the reason there is no number. */
+/** The chart tabs. MPA is drawn as a percentage of one 10 mg dose's peak; it has no concentration yet. */
 enum class HormoneSeries { E2, TT, P4, MPA }
 
 data class FlowUi(

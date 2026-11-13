@@ -59,7 +59,7 @@ class ChartModel(
     /** True for Total T (blue); false for E2 (teal). */
     val isTotalT: Boolean,
     val isP4: Boolean = false,
-    /** True for MPA (violet). MPA has no validated curve, so its axis carries no numbers. */
+    /** True for MPA (violet). Its curve is a percentage of one 10 mg dose's peak, never a concentration. */
     val isMpa: Boolean = false,
     /** Gray reference band in the units of the chart, or null. */
     val guide: ClosedFloatingPointRange<Double>? = null,
@@ -179,8 +179,8 @@ private fun DrawScope.drawChart(
         .map { seg -> seg.filter { it.at.toEpochMilli() in m.from.toEpochMilli()..m.to.toEpochMilli() } }
         .filter { it.isNotEmpty() }
     val points = segments.flatten()
-    val unit = if (m.isP4 || m.isMpa) 1.0 else if (m.isTotalT) 20.0 else 50.0
-    var top = points.maxOfOrNull { it.upper } ?: (if (m.isP4 || m.isMpa) 5.0 else if (m.isTotalT) 100.0 else 250.0)
+    val unit = if (m.isP4) 1.0 else if (m.isTotalT) 20.0 else 50.0
+    var top = points.maxOfOrNull { it.upper } ?: (if (m.isP4) 5.0 else if (m.isTotalT || m.isMpa) 100.0 else 250.0)
     m.labs.filter { it.at in m.from..m.to }.forEach { top = max(top, it.value) }
     m.guide?.let { if (!compact) top = max(top, it.endInclusive) }
     val ymax = max(unit, ceil(top * 1.08 / unit) * unit)
@@ -192,11 +192,9 @@ private fun DrawScope.drawChart(
         // grid + y labels
         for (v in listOf(0.0, ymax / 2, ymax)) {
             drawLine(c.line, px(pl, yOf(v)), px(vbW - pr, yOf(v)), strokeWidth = 1f)
-            // MPA has no validated curve, so its axis carries no numbers.
-            if (!m.isMpa) {
-                val label = measurer.measure(if (m.isP4) com.hormonelog.app.state.plainNumber(v) else v.toInt().toString(), labelStyle)
-                drawText(label, topLeft = Offset(px(pl - 5f, 0f).x - label.size.width, px(0f, yOf(v)).y - label.size.height / 2f))
-            }
+            // MPA is drawn as a share of one dose's peak, so its axis reads in percent.
+            val label = measurer.measure(if (m.isP4) com.hormonelog.app.state.plainNumber(v) else v.toInt().toString() + if (m.isMpa) "%" else "", labelStyle)
+            drawText(label, topLeft = Offset(px(pl - 5f, 0f).x - label.size.width, px(0f, yOf(v)).y - label.size.height / 2f))
         }
         m.guide?.let { g ->
             drawRect(c.guide, topLeft = px(pl, yOf(g.endInclusive)), size = Size(iw * sx, (yOf(g.start) - yOf(g.endInclusive)) * sy))

@@ -55,6 +55,8 @@ data class Curves(
 ) {
     val hasE2: Boolean get() = e2 != null
     val mpaSeries: EstimateSeries? get() = (mpaStatus as? ModelStatus.Available)?.series
+    /** True when the MPA series is percent of one 10 mg dose's peak, not ng/mL. */
+    val mpaRelative: Boolean get() = (mpaStatus as? ModelStatus.Available)?.relative == true
 }
 
 /** The calculations every screen shares. All pure: the same records always give the same answer. */
@@ -116,8 +118,8 @@ object Analysis {
             }
         }.sortedBy { it.occurredAt }
 
-    /** Shipped switched off, with no validated parameters. MPA records never feed the E2, Total T or P4 models. */
-    private val mpaEngine = MedroxyprogesteroneEngine(MedroxyprogesteroneEvidence.validated, MedroxyprogesteroneEvidence.stage)
+    /** No validated parameters, so it draws the shape in percent, never ng/mL. MPA records never feed the E2, Total T or P4 models. */
+    private val mpaEngine = MedroxyprogesteroneEngine(MedroxyprogesteroneEvidence.validated, MedroxyprogesteroneEvidence.stage, shape = MedroxyprogesteroneEvidence.shape)
 
     /** MPA's own answer over the span its records cover, up to [now]. */
     fun mpaStatus(doses: List<DoseEvent>, now: Instant): ModelStatus {
@@ -143,8 +145,8 @@ object Analysis {
     ): Curves {
         val taken = doses.withoutMpa().filter { it.status.wasTaken }
         val planned = planned(regimens, doses, now, to, zone)
-        val mpa = mpaEngine.curve(doses, from, to, samples)
         val mpaPlanned = plannedMpa(regimens, doses, now, to, zone)
+        val mpa = mpaEngine.curve(doses + mpaPlanned, from, to, samples)
         if (taken.isEmpty() && planned.isEmpty()) {
             return Curves(null, null, emptyList(), status == GonadalStatus.DECLINED, calibration, emptyList(), mpaStatus = mpa, mpaPlanned = mpaPlanned)
         }

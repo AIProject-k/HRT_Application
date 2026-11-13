@@ -18,6 +18,46 @@ import kotlin.math.exp
 import kotlin.math.ln
 
 class MedroxyprogesteroneEngineTest {
+    private val shapeOnly = MedroxyprogesteroneEngine(null, EvidenceStage.PK_SUMMARY, shape = com.hormonelog.core.evidence.MedroxyprogesteroneEvidence.shape)
+    private val shapeStart = Instant.parse("2026-10-01T00:00:00Z")
+    private fun tablet(hour: Long, mg: Double = 10.0) = DoseEvent(
+        java.util.UUID.randomUUID(), shapeStart.plusSeconds(hour * 3600), "UTC", Drug.MEDROXYPROGESTERONE_ACETATE, Route.ORAL,
+        mg, DoseUnit.MG, mg, com.hormonelog.core.domain.DoseStatus.ADMINISTERED,
+    )
+    private fun percents(doses: List<DoseEvent>, fromHour: Long, toHour: Long): List<EstimatePoint> {
+        val status = shapeOnly.curve(doses, shapeStart.plusSeconds(fromHour * 3600), shapeStart.plusSeconds(toHour * 3600), samples = (toHour - fromHour).toInt() * 10)
+        status as ModelStatus.Available
+        assertTrue(status.relative)
+        return status.series.points
+    }
+
+    @Test fun withoutValidatedNumbersOneTenMgTabletPeaksAtOneHundredPercentAndHalvesEveryTwelveHours() {
+        val points = percents(listOf(tablet(0)), 0, 48)
+        val peak = points.maxByOrNull { it.median }!!
+        assertEquals(100.0, peak.median, 0.1)
+        assertEquals(2.7, (peak.at.epochSecond - shapeStart.epochSecond) / 3600.0, 0.2)
+        fun at(hour: Int) = points[hour * 10].median
+        assertEquals(0.5, at(36) / at(24), 0.01)
+        assertEquals(points.last().median, points.last().lower, 0.0)
+    }
+
+    @Test fun dailyTabletsStackToAboutAThirdAboveASingleTabletsPeak() {
+        val week = (0L..7L).map { tablet(it * 24) }
+        assertEquals(134.0, percents(week, 168, 192).maxOf { it.median }, 3.0)
+        assertEquals(50.0, percents(listOf(tablet(0, mg = 5.0)), 0, 24).maxOf { it.median }, 0.1)
+    }
+
+    @Test fun theShapeIsNotDrawnWithoutSummaryEvidenceOrForADoseAboveTheTablesRead() {
+        val metadataOnly = MedroxyprogesteroneEngine(null, EvidenceStage.METADATA_ONLY, shape = com.hormonelog.core.evidence.MedroxyprogesteroneEvidence.shape)
+        assertEquals(
+            ModelStatus.Unavailable(ModelReason.EVIDENCE_INSUFFICIENT, EvidenceStage.METADATA_ONLY),
+            metadataOnly.curve(listOf(tablet(0)), shapeStart, shapeStart.plusSeconds(86400)),
+        )
+        assertEquals(
+            ModelStatus.Unavailable(ModelReason.UNSUPPORTED_RECORDS, EvidenceStage.PK_SUMMARY),
+            shapeOnly.curve(listOf(tablet(0, mg = 50.0)), shapeStart, shapeStart.plusSeconds(86400)),
+        )
+    }
     private val t0 = Instant.parse("2026-10-17T06:00:00Z")
     private val day = 86400L
 

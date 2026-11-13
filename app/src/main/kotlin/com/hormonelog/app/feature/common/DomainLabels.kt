@@ -268,7 +268,7 @@ fun p4NoNumberWords(status: P4Status, blockers: List<DoseEvent>, fmt: Fmt): Stri
 /** The MPA tab's line. Each reason gets its own sentence and no number, so an empty MPA tab is never unexplained. */
 fun mpaHeadline(curves: Curves?): String = when (val status = curves?.mpaStatus) {
     null -> "MPA 농도를 계산하는 중이에요"
-    is ModelStatus.Available -> "MPA 곡선을 계산했어요 · 체내 총농도 아님"
+    is ModelStatus.Available -> if (status.relative) "한 알(10 mg) 정점을 100%로 그려요 · 농도(ng/mL) 아님" else "MPA 곡선을 계산했어요 · 체내 총농도 아님"
     is ModelStatus.Unavailable -> when (status.reason) {
         ModelReason.NO_DATA -> "MPA 복용 기록이 없어요"
         ModelReason.UNSUPPORTED_RECORDS -> "지원 밖 MPA 기록만 있어요 · 기록은 그대로 두고 곡선은 그리지 않아요"
