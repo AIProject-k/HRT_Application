@@ -71,5 +71,5 @@ class BindingGateTest {
     private fun records(h: ChatHarness): Set<String> =
         h.doses.map { "${label(it.drug)}|${it.amountEntered}|${ChatHarness.kst(it.occurredAt)}" }.toSet()
 
-    private fun label(drug: Drug): String = if (drug == Drug.ESTRADIOL_TABLET) "프로기노바" else "안쿨"
+    private fun label(drug: Drug): String = if (drug == Drug.ESTRADIOL_VALERATE) "프로기노바" else "안쿨"
 }

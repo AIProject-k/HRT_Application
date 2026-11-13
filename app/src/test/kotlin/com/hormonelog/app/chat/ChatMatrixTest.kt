@@ -29,7 +29,7 @@ class ChatMatrixTest {
 
     private fun one(id: String, text: String, expect: Want) = Row(id, listOf(text), expect)
     private fun seq(id: String, vararg texts: String, expect: Want) = Row(id, texts.toList(), expect)
-    private fun save(at: String, mg: Double, drug: Drug = Drug.ESTRADIOL_TABLET) = Want(doses = listOf(Dose(drug, mg, at)))
+    private fun save(at: String, mg: Double, drug: Drug = Drug.ESTRADIOL_VALERATE) = Want(doses = listOf(Dose(drug, mg, at)))
     private val none = Want(refuse = true)
     private val noneModelAllowed = Want(refuse = true, modelAllowed = true)
 
@@ -89,9 +89,9 @@ class ChatMatrixTest {
         one("M53", "프로기노바 2mg 아침약으로 기억해줘", noneModelAllowed),
         one("M54", "오늘 09:00 프로기노바 2mg 복용\n오늘 09:00 프로기노바 2mg 복용", none),
         one("M55", "오늘 09:00 프로기노바 2mg 복용\n오늘 21:00 프로기노바 2mg 복용", Want(doses = listOf(
-            Dose(Drug.ESTRADIOL_TABLET, 2.0, "2026-10-24 09:00"), Dose(Drug.ESTRADIOL_TABLET, 2.0, "2026-10-24 21:00")))),
+            Dose(Drug.ESTRADIOL_VALERATE, 2.0, "2026-10-24 09:00"), Dose(Drug.ESTRADIOL_VALERATE, 2.0, "2026-10-24 21:00")))),
         one("M56", "방금 프로기노바 2mg과 안쿨 25mg 복용", Want(doses = listOf(
-            Dose(Drug.ESTRADIOL_TABLET, 2.0, "2026-10-24 23:00"), Dose(Drug.CYPROTERONE, 25.0, "2026-10-24 23:00")))),
+            Dose(Drug.ESTRADIOL_VALERATE, 2.0, "2026-10-24 23:00"), Dose(Drug.CYPROTERONE, 25.0, "2026-10-24 23:00")))),
         one("M57", "오늘 10:00 E2 100pg/mL 검사 기록해줘", Want(labs = listOf(LabRec(Analyte.ESTRADIOL, 100.0, "pg/mL")))),
         one("M58", "오늘 머리가 아프고 피곤했어 메모해줘", none),
         one("M59", "몸무게 60kg 기록해줘", none),

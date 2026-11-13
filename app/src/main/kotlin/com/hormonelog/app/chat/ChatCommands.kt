@@ -27,9 +27,9 @@ object ChatCommands {
     private fun compact(s: String) = s.lowercase().replace(Regex("\\s+"), "")
     private val drugs = mapOf(
         "ev" to Drug.ESTRADIOL_VALERATE, "에스트라디올발레레이트" to Drug.ESTRADIOL_VALERATE, "발레레이트" to Drug.ESTRADIOL_VALERATE,
-        "프로기노바데포" to Drug.ESTRADIOL_VALERATE,
+        "프로기노바데포" to Drug.ESTRADIOL_VALERATE, "프로기노바" to Drug.ESTRADIOL_VALERATE,
         "ec" to Drug.ESTRADIOL_CYPIONATE, "에스트라디올사이피오네이트" to Drug.ESTRADIOL_CYPIONATE, "사이피오네이트" to Drug.ESTRADIOL_CYPIONATE,
-        "에스트라디올" to Drug.ESTRADIOL_TABLET, "프로기노바" to Drug.ESTRADIOL_TABLET, "프레다" to Drug.ESTRADIOL_TABLET,
+        "에스트라디올" to Drug.ESTRADIOL_TABLET, "프레다" to Drug.ESTRADIOL_TABLET,
         "에스트로펨" to Drug.ESTRADIOL_TABLET,
         "스피로노락톤" to Drug.SPIRONOLACTONE, "스피로" to Drug.SPIRONOLACTONE, "알닥톤" to Drug.SPIRONOLACTONE,
         "사이프로테론" to Drug.CYPROTERONE, "cpa" to Drug.CYPROTERONE,
