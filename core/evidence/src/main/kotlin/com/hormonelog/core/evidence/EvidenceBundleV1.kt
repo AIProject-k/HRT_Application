@@ -52,6 +52,11 @@ object EvidenceBundleV1 {
             "oral F ~88%, elimination t½ ~1.6–4.3 d; CPA alone suppresses T 50–70%, ~95% with estrogen; low doses near-maximal", "tertiary",
         ),
         EvidenceSource(
+            "herndon2023_sc_im", "Comparison of Subcutaneous and Intramuscular Estradiol Regimens as Part of Gender-Affirming Hormone Therapy",
+            "Herndon et al.", 2023, "PMID 36868378, Endocrine Practice",
+            "Weekly dose SC 3.75 mg (IQR 3–4) vs IM 4 mg (IQR 3–5.15); the E2 levels reached did not differ between the routes (p = 0.69).", "retrospective cohort",
+        ),
+        EvidenceSource(
             "progynova_fachinfo", "Progynova 21 (2 mg estradiol valerate coated tablets) — Fachinformation",
             "Jenapharm / Bayer", 2025, "fachinfo.de/fi/pdf/001739",
             "One tablet holds 2 mg estradiol valerate, equal to 1.53 mg estradiol: the valerate part is 23.5% of the weight.", "product label",
@@ -106,7 +111,7 @@ object EvidenceBundleV1 {
         val injEvidence = setOf("estrannaise", "transfemsci_inj_meta")
         injectable.forEach { (e, c) -> addAll(c3Params(Route.IM_INJECTION, e, c, injEvidence)) }
         // SC reuses the ester PK with wider uncertainty applied in the engine.
-        injectable.forEach { (e, c) -> addAll(c3Params(Route.SC_INJECTION, e, c, injEvidence)) }
+        injectable.forEach { (e, c) -> addAll(c3Params(Route.SC_INJECTION, e, c, injEvidence + "herndon2023_sc_im")) }
         val patchEvidence = setOf("estrannaise")
         patch.forEach { (v, c) -> addAll(c3Params(Route.PATCH, v, c, patchEvidence)) }
 
