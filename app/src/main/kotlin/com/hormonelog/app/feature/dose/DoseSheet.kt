@@ -191,6 +191,10 @@ fun DoseSheet(doses: List<DoseEvent>, draft: DoseDraft, fmt: Fmt, actions: DoseS
                 }
             }
 
+            if (draft.drug == Drug.ESTRADIOL_VALERATE && !draft.isInjection) {
+                HlText("프로기노바 같은 발레레이트 정제예요. 2 mg은 에스트라디올 1.53 mg으로 계산해요.", size = HlSize.t13, color = c.muted, lineHeight = 1.5f)
+            }
+
             if (draft.isGel) {
                 HlBanner(HlNotice.Warn) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

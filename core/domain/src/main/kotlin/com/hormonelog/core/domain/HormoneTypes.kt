@@ -54,13 +54,15 @@ val Drug.isAntiandrogen: Boolean
     get() = this == Drug.SPIRONOLACTONE || this == Drug.CYPROTERONE
 
 /**
- * Routes this formulation can physically be given by. A patch is not injected and an
- * ester in oil is not swallowed, so the recorder must not be able to pair them — a
+ * Routes this formulation can physically be given by. A patch is not injected and
+ * cypionate exists only in oil, so the recorder must not be able to pair them — a
  * nonsensical pair would otherwise reach the curve engines as if it were real.
+ * Valerate is both an injection and a tablet (Progynova).
  */
 val Drug.allowedRoutes: List<Route>
     get() = when (this) {
-        Drug.ESTRADIOL_VALERATE, Drug.ESTRADIOL_CYPIONATE -> listOf(Route.IM_INJECTION, Route.SC_INJECTION)
+        Drug.ESTRADIOL_VALERATE -> listOf(Route.IM_INJECTION, Route.SC_INJECTION, Route.ORAL, Route.SUBLINGUAL)
+        Drug.ESTRADIOL_CYPIONATE -> listOf(Route.IM_INJECTION, Route.SC_INJECTION)
         Drug.ESTRADIOL_TABLET -> listOf(Route.ORAL, Route.SUBLINGUAL)
         Drug.ESTRADIOL_PATCH -> listOf(Route.PATCH)
         Drug.ESTRADIOL_GEL -> listOf(Route.GEL)

@@ -43,7 +43,7 @@ class E2RouteModels(bundle: EvidenceBundle) {
             Route.IM_INJECTION, Route.SC_INJECTION ->
                 if (esterFor(event.drug) == null || event.normalizedMilligrams == null) DoseExclusion.UNSUPPORTED_COMBINATION else null
             Route.ORAL, Route.SUBLINGUAL ->
-                if (event.drug != Drug.ESTRADIOL_TABLET || event.normalizedMilligrams == null) DoseExclusion.UNSUPPORTED_COMBINATION else null
+                if (tabletEstradiol(event) == null) DoseExclusion.UNSUPPORTED_COMBINATION else null
             Route.PATCH ->
                 if (event.drug != Drug.ESTRADIOL_PATCH) {
                     DoseExclusion.UNSUPPORTED_COMBINATION
@@ -72,13 +72,13 @@ class E2RouteModels(bundle: EvidenceBundle) {
                 E2ThreeCompartmentModel.concentration(elapsedDays, amount, d, p["k1"]!!, p["k2"]!!, p["k3"]!!)
             }
             Route.ORAL -> {
-                val amount = event.normalizedMilligrams ?: return null
+                val amount = tabletEstradiol(event) ?: return null
                 val p = routeParameters.getValue(Route.ORAL)
                 val s = p["oralScale"] ?: return null
                 OralE2Model.concentration(elapsedDays, amount, s, p["oralKa"]!!, p["oralKe"]!!)
             }
             Route.SUBLINGUAL -> {
-                val amount = event.normalizedMilligrams ?: return null
+                val amount = tabletEstradiol(event) ?: return null
                 val p = routeParameters.getValue(Route.SUBLINGUAL)
                 val s = p["slScale"] ?: return null
                 SublingualE2Model.concentration(
@@ -112,6 +112,16 @@ class E2RouteModels(bundle: EvidenceBundle) {
         Route.ORAL -> 0.30
         Route.SUBLINGUAL -> 0.50
         Route.GEL -> 0.60
+    }
+
+    /** mg of estradiol a tablet carries: all of an estradiol tablet, the estradiol part of a valerate one. */
+    private fun tabletEstradiol(event: DoseEvent): Double? {
+        val mg = event.normalizedMilligrams ?: return null
+        return when (event.drug) {
+            Drug.ESTRADIOL_TABLET -> mg
+            Drug.ESTRADIOL_VALERATE -> routeParameters.getValue(event.route)["valerateFraction"]?.let { mg * it }
+            else -> null
+        }
     }
 
     private fun esterFor(drug: Drug): String? = when (drug) {

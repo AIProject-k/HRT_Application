@@ -25,13 +25,20 @@ import kotlin.math.roundToInt
 
 /** The drugs a route can carry, in the order the design lists them. */
 fun drugsFor(route: Route): List<Drug> {
+    // The estradiol tablet leads, so a route's first drug stays what it was before valerate tablets could be chosen.
     val order = listOf(
-        Drug.ESTRADIOL_VALERATE, Drug.ESTRADIOL_CYPIONATE, Drug.ESTRADIOL_TABLET, Drug.CYPROTERONE,
+        Drug.ESTRADIOL_TABLET, Drug.ESTRADIOL_VALERATE, Drug.ESTRADIOL_CYPIONATE, Drug.CYPROTERONE,
         Drug.SPIRONOLACTONE, Drug.ESTRADIOL_PATCH, Drug.ESTRADIOL_GEL, Drug.PROGESTERONE_MICRONIZED,
         Drug.MEDROXYPROGESTERONE_ACETATE,
     )
     return order.filter { route in it.allowedRoutes }
 }
+
+/** The drug after a route change: kept when it fits, except that an injected ester does not silently become a tablet. */
+fun drugAfterRouteChange(drug: Drug, from: Route, to: Route): Drug =
+    if (drug in drugsFor(to) && from.isInjectionRoute() == to.isInjectionRoute()) drug else drugsFor(to).first()
+
+private fun Route.isInjectionRoute() = this == Route.IM_INJECTION || this == Route.SC_INJECTION
 
 /**
  * Pure transitions for everything the user records: doses, plans, labs, deletions, undo and
@@ -150,7 +157,7 @@ object RecordsReducer {
 
     fun setRoute(s: AppState, route: Route): AppState {
         val d = s.doseDraft
-        val drug = if (d.drug in drugsFor(route)) d.drug else drugsFor(route).first()
+        val drug = drugAfterRouteChange(d.drug, d.route, route)
         return s.copy(doseDraft = fillFrom(d.copy(route = route, drug = drug, site = d.site.takeIf { route.isInjectionRoute() }), s.doses))
     }
 
@@ -175,7 +182,6 @@ object RecordsReducer {
         ),
     )
 
-    private fun Route.isInjectionRoute() = this == Route.IM_INJECTION || this == Route.SC_INJECTION
 
     /**
      * Saves the dose draft, replacing the record it was loaded from when editing. Unless

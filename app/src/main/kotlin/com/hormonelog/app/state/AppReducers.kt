@@ -93,7 +93,7 @@ object OnboardingOps {
 
     fun setRoute(s: AppState, route: Route): AppState {
         val o = s.onboarding
-        val drug = if (o.drug in drugsFor(route)) o.drug else drugsFor(route).first()
+        val drug = drugAfterRouteChange(o.drug, o.route, route)
         return s.copy(onboarding = o.copy(route = route, drug = drug))
     }
 

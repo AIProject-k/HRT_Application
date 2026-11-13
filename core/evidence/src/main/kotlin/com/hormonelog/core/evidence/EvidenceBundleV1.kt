@@ -52,6 +52,11 @@ object EvidenceBundleV1 {
             "oral F ~88%, elimination t½ ~1.6–4.3 d; CPA alone suppresses T 50–70%, ~95% with estrogen; low doses near-maximal", "tertiary",
         ),
         EvidenceSource(
+            "progynova_fachinfo", "Progynova 21 (2 mg estradiol valerate coated tablets) — Fachinformation",
+            "Jenapharm / Bayer", 2025, "fachinfo.de/fi/pdf/001739",
+            "One tablet holds 2 mg estradiol valerate, equal to 1.53 mg estradiol: the valerate part is 23.5% of the weight.", "product label",
+        ),
+        EvidenceSource(
             "maggacis2025_gel", "Serum Estradiol Concentrations With Estradiol 0.06% Gel in Transgender and Gender-Diverse Adults",
             "Maggacis, Cheung, Nolan", 2025, "doi 10.1111/cen.15217, Clinical Endocrinology",
             "81 adults; median E2 285 pmol/L (78 pg/mL) on 1.5 mg/d (n=66), 529 pmol/L (144 pg/mL) on 3 mg/d (n=17); weak dose correlation (r=0.23). Immunoassay; time since the last dose and application site not recorded. Cites postmenopausal data: 68 pg/mL on 1.5 mg/d, 103 pg/mL on 3 mg/d.", "retrospective cohort",
@@ -111,6 +116,10 @@ object EvidenceBundleV1 {
         // sublingual also needs the swallowed fraction routed through the oral params:
         addAll(oneComp(Route.SUBLINGUAL, "oral", scale = 98.6, ka = 3.5, ke = 1.28, swallowed = null, evidence = oralEvidence))
 
+        // A valerate tablet is counted as the estradiol it carries (1.53 mg in 2 mg), then follows the tablet curve.
+        listOf(Route.ORAL, Route.SUBLINGUAL).forEach {
+            add(ModelParameter("$it.valerateFraction", it, null, "valerateFraction", 0.765, "fraction", setOf("progynova_fachinfo")))
+        }
         // Gel: steady-state average ≈ 45 pg/mL per mg/day over the baseline (scale × (1/ke − 1/ka)), about twofold
         // accumulation (t½ 24 h) and a peak 8–9 h after the dose. The amount is mg of estradiol, not grams of gel.
         addAll(oneComp(Route.GEL, "gel", scale = 34.5, ka = 7.2, ke = 0.693, swallowed = null, evidence = setOf("maggacis2025_gel", "fda_divigel_p04003")))

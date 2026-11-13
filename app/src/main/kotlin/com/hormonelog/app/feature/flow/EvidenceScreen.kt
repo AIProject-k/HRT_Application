@@ -58,6 +58,7 @@ private val PARAMETER_NAMES = mapOf(
     "slScale" to "설하 노출 배율",
     "slKa" to "설하 흡수 속도 (ka)",
     "slKe" to "설하 제거 속도 (ke)",
+    "valerateFraction" to "발레레이트 정제의 에스트라디올 비율",
     "gelScale" to "젤 노출 배율",
     "gelKa" to "젤 흡수 속도 (ka)",
     "gelKe" to "젤 제거 속도 (ke)",

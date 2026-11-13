@@ -74,6 +74,17 @@ class E2CurveEngineTest {
     }
 
     @Test
+    fun aValerateTabletCountsAsTheEstradiolItCarries() {
+        val at = t0.plus(4, ChronoUnit.HOURS)
+        fun over(drug: Drug, mg: Double, route: Route) = engine.medianAt(listOf(dose(route, drug, mg, t0)), at)!! - E2CurveEngine.DEFAULT_BASELINE
+
+        // Progynova 2 mg holds 1.53 mg of estradiol.
+        assertEquals(over(Drug.ESTRADIOL_TABLET, 1.53, Route.ORAL), over(Drug.ESTRADIOL_VALERATE, 2.0, Route.ORAL), 1e-9)
+        assertEquals(over(Drug.ESTRADIOL_TABLET, 1.53, Route.SUBLINGUAL), over(Drug.ESTRADIOL_VALERATE, 2.0, Route.SUBLINGUAL), 1e-9)
+        assertTrue(engine.exclusionsIn(listOf(dose(Route.ORAL, Drug.ESTRADIOL_CYPIONATE, 2.0, t0))).isNotEmpty())
+    }
+
+    @Test
     fun dailyGelSettlesNearTheLevelsItsSourcesReport() {
         // 1.5 mg/day: 68 pg/mL (postmenopausal) and a median of 78 pg/mL (transgender adults) in the cited sources.
         val doses = (0..20).map { dose(Route.GEL, Drug.ESTRADIOL_GEL, 1.5, t0.plus(it.toLong(), ChronoUnit.DAYS)) }

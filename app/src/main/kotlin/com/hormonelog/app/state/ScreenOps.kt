@@ -219,7 +219,7 @@ object ScheduleOps {
 
     /** A route that cannot carry the chosen drug brings the first drug that can. */
     fun setRoute(s: AppState, route: Route): AppState = draft(s) { d ->
-        d.copy(route = route, drug = if (d.drug in drugsFor(route)) d.drug else drugsFor(route).first())
+        d.copy(route = route, drug = drugAfterRouteChange(d.drug, d.route, route))
     }
 
     fun setDrug(s: AppState, drug: Drug): AppState = draft(s) { it.copy(drug = drug) }
