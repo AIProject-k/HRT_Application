@@ -1,5 +1,8 @@
 package com.hormonelog.app.chat
 
+import com.hormonelog.app.at
+import com.hormonelog.app.daily
+import com.hormonelog.app.state.AppState
 import com.hormonelog.core.domain.Analyte
 import com.hormonelog.core.domain.Drug
 import com.hormonelog.core.domain.Route
@@ -38,10 +41,23 @@ class EverydayChatTest {
     }
 
     @Test fun anHourWordInsideALargerOrRangedNumberIsNotReadAsThatHour() {
-        for (text in listOf("열한 시간 전 에스트라디올 2mg 먹었어", "열두 시간 전 에스트라디올 2mg 먹었어", "두세 시간 전 에스트라디올 2mg 먹었어")) {
-            val times = ChatHarness().send(text).doses.map { ChatHarness.kst(it.occurredAt) }
-            assertTrue("$text -> $times", times.none { it in setOf("2026-10-24 22:00", "2026-10-24 21:00", "2026-10-24 20:00") })
+        for (word in listOf("열한", "열두", "스물한", "두세", "두 세", "한 두", "세네")) {
+            val h = ChatHarness().send("$word 시간 전 에스트라디올 2mg 먹었어")
+            assertTrue("$word -> ${h.doses.map { ChatHarness.kst(it.occurredAt) }}", h.doses.isEmpty())
         }
+        val yes = ChatHarness().send("네 한 시간 전에 에스트라디올 2mg 먹었어")
+        assertEquals(listOf("2026-10-24 22:00"), yes.doses.map { ChatHarness.kst(it.occurredAt) })
+    }
+
+    @Test fun aProgynovaTabletFromChatMovesTheOldTabletScheduleAndUndoMovesItBack() {
+        val h = ChatHarness()
+        h.state = AppState(regimens = listOf(daily(at(2026, 10, 1), Drug.ESTRADIOL_TABLET, Route.ORAL, 2.0, 9 * 60)))
+        h.send("방금 프로기노바 2mg 먹었어")
+        assertEquals(h.lastReply, listOf(Drug.ESTRADIOL_VALERATE), h.state.regimens.map { it.drug })
+        assertTrue(h.chat.ui.canUndo)
+        h.chat.undo()
+        assertEquals(listOf(Drug.ESTRADIOL_TABLET), h.state.regimens.map { it.drug })
+        assertTrue(h.doses.isEmpty())
     }
 
     @Test fun pillsTakenTogetherAreSavedEachWithItsOwnAmount() {

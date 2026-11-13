@@ -7,6 +7,7 @@ import com.hormonelog.app.state.AppState
 import com.hormonelog.app.state.JournalOps
 import com.hormonelog.app.state.RecordsReducer
 import com.hormonelog.app.state.UndoSnapshot
+import com.hormonelog.app.state.followValerateTablets
 import com.hormonelog.core.data.RecordSnapshot
 import java.time.Instant
 import java.time.ZoneId
@@ -191,7 +192,7 @@ class ChatSession(
                     val decision = if (command.action in ChatMemoryActions.actions) ChatMemoryActions.apply(before, command, inputs, id, referenceTime, zone)
                         else ChatCommands.apply(before, command, inputs, id, referenceTime, zone,
                             previousDoseAt = previous.takeIf { receipt?.after == before.snapshot })
-                    val next = decision.next
+                    val next = decision.next?.let { followValerateTablets(before, it) }
                     if (next == null) {
                         if (command.action in ChatCommands.readActions || command.action == "memory_list") {
                             // Remove only this query; keep an unfinished record and its timestamps.

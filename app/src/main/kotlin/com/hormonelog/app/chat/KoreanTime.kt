@@ -64,8 +64,12 @@ internal object KoreanTime {
     fun normalizeWithOrigins(inputs: List<String>): List<Pair<String, Int>> {
         val lines = mutableListOf<Pair<String, Int>>()
         inputs.forEachIndexed { index, raw ->
-            val line = raw.trim().replace(Regex("밀리그[램람]"), "mg").replace("어젯밤", "어제 밤")
-                .replace(Regex("(?<![열한두세네])(한|두|세|네|다섯|여섯)\\s*시간\\s*전")) { "${hourWords.indexOf(it.groupValues[1]) + 1}시간 전" }
+            val words = raw.trim().replace(Regex("밀리그[램람]"), "mg").replace("어젯밤", "어제 밤")
+            // "열한", "스물두" are larger numbers and "두세", "한 두" are ranges, so neither is read as one hour word.
+            val line = words.replace(Regex("(?<![열물])(한|두|세|네|다섯|여섯)\\s*시간\\s*전")) { m ->
+                val i = hourWords.indexOf(m.groupValues[1])
+                if (i > 0 && words.substring(0, m.range.first).trimEnd().endsWith(hourWords[i - 1])) m.value else "${i + 1}시간 전"
+            }
             val period = Regex("^(오전|오후)$").matchEntire(line)?.groupValues?.get(1)
             val periodHour = Regex("^(오전|오후)\\s*(\\d{1,2})시(?:\\s*\\d{1,2}분|\\s*반)?$").matchEntire(line)
             val target = when {
