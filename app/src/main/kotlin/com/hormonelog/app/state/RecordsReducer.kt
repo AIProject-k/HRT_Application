@@ -41,6 +41,26 @@ fun drugAfterRouteChange(drug: Drug, from: Route, to: Route): Drug =
 private fun Route.isInjectionRoute() = this == Route.IM_INJECTION || this == Route.SC_INJECTION
 
 /**
+ * A tablet schedule made before valerate tablets could be chosen is saved as an estradiol tablet. When a valerate tablet
+ * of the same route and amount is first recorded, that schedule becomes a valerate one, so it counts the new records
+ * as taken. Nothing changes when a valerate schedule for the route already runs, and no dose record is touched.
+ */
+fun followValerateTablets(before: AppState, after: AppState): AppState {
+    val known = before.doses.mapTo(HashSet()) { it.id }
+    val added = after.doses.filter {
+        it.id !in known && it.drug == Drug.ESTRADIOL_VALERATE && !it.route.isInjectionRoute() && it.status.wasTaken
+    }
+    if (added.isEmpty()) return after
+    val regimens = after.regimens.map { r ->
+        val follows = r.active && r.drug == Drug.ESTRADIOL_TABLET &&
+            added.any { it.route == r.route && it.amountEntered == r.amountEntered } &&
+            after.regimens.none { it.active && it.drug == Drug.ESTRADIOL_VALERATE && it.route == r.route }
+        if (follows) r.copy(drug = Drug.ESTRADIOL_VALERATE) else r
+    }
+    return if (regimens == after.regimens) after else after.copy(regimens = regimens)
+}
+
+/**
  * Pure transitions for everything the user records: doses, plans, labs, deletions, undo and
  * imports. Nothing here reads a clock — callers pass [now] and the [zone] — so the same
  * records and the same instant always give the same result.

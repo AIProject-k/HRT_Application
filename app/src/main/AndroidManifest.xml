@@ -3,10 +3,8 @@
     <!-- Dose, lab and visit reminders; the system asks when the user turns the first one on. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Optional, user-started download of the pinned offline AI model, and the user-started update check. -->
+    <!-- Optional, user-started download of the pinned offline AI model. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 내 정보 › 업데이트 확인 hands a downloaded, hash-checked release APK to Android's installer, which asks the user first. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
         allowBackup=false is what makes the app's "기기 안에만 저장" claim true: Android backs apps

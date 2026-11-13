@@ -25,6 +25,7 @@ import com.hormonelog.app.state.RecordsReducer
 import com.hormonelog.app.state.ReportKind
 import com.hormonelog.app.state.ReportOps
 import com.hormonelog.app.state.SettingsOps
+import com.hormonelog.app.state.followValerateTablets
 import com.hormonelog.app.state.RestoreIssue
 import com.hormonelog.app.state.RestoreKind
 import com.hormonelog.app.state.RestorePreview
@@ -74,7 +75,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     val chatSetup = com.hormonelog.app.chat.LocalChatController(app, viewModelScope) { state }
-    val updater = com.hormonelog.app.platform.AppUpdater(app, viewModelScope)
     val chat = com.hormonelog.app.chat.ChatSession({ state }, { next, done ->
         state = next
         persistRecords(next, done)
@@ -120,7 +120,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         chat.suspendRequest()
         chatSetup.dispose()
-        updater.dispose()
         if (ViewModelHolder.current === this) ViewModelHolder.current = null
         super.onCleared()
     }
@@ -132,8 +131,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     // ── plumbing ──────────────────────────────────────────────
-    private fun commit(next: AppState) {
+    private fun commit(change: AppState) {
         val prev = state
+        val next = followValerateTablets(prev, change)
         state = next
         val recordsChanged = prev.doses !== next.doses || prev.labs !== next.labs || prev.regimens !== next.regimens ||
             prev.clinics !== next.clinics || prev.memos !== next.memos || prev.journal !== next.journal ||

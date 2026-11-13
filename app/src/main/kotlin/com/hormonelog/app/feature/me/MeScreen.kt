@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import com.hormonelog.app.analysis.HomeLogic
 import com.hormonelog.app.feature.common.Fmt
 import com.hormonelog.app.feature.common.label
-import com.hormonelog.app.platform.UpdateUi
 import com.hormonelog.app.state.AppState
 import com.hormonelog.app.state.plainNumber
 import com.hormonelog.app.ui.kit.HlButton
@@ -60,12 +59,11 @@ class MeActions(
     val security: () -> Unit,
     val evidence: () -> Unit,
     val licenses: () -> Unit,
-    val update: () -> Unit,
     val deleteAll: () -> Unit,
 )
 
 @Composable
-fun MeScreen(s: AppState, fmt: Fmt, appVersion: String, update: UpdateUi, actions: MeActions) {
+fun MeScreen(s: AppState, fmt: Fmt, appVersion: String, actions: MeActions) {
     val c = Hl.colors
     val settings = s.settings
     val baselineLab = s.labs.filter { it.isBaseline }.maxByOrNull { it.collectedAt ?: java.time.Instant.MIN }
@@ -155,29 +153,11 @@ fun MeScreen(s: AppState, fmt: Fmt, appVersion: String, update: UpdateUi, action
             HlSettingRow("오픈소스 라이선스", onClick = actions.licenses)
             HlDivider()
             HlSettingRow("앱 버전", value = appVersion)
-            HlDivider()
-            HlSettingRow(
-                "업데이트 확인",
-                value = (update as? UpdateUi.Available)?.let { "v${it.versionName}" },
-                valueColor = c.orange,
-                subtitle = when (update) {
-                    UpdateUi.Idle -> "누를 때만 GitHub에서 최신 버전을 확인해요"
-                    UpdateUi.Checking -> "확인하고 있어요…"
-                    UpdateUi.Latest -> "최신 버전이에요"
-                    is UpdateUi.Available -> "새 버전이 있어요 · ${mib(update.size)} · 누르면 받아서 설치해요"
-                    is UpdateUi.Downloading -> "받는 중 ${mib(update.done)} / ${mib(update.total)}"
-                    is UpdateUi.Confirm -> "설치 창에서 업데이트를 눌러 주세요 · 창이 없으면 여기를 눌러요"
-                    is UpdateUi.Failed -> update.message
-                },
-                onClick = actions.update, minHeight = 60.dp,
-            )
         }
 
         HlButton("모든 기록 삭제", actions.deleteAll, Modifier.fillMaxWidth().padding(top = 6.dp), kind = HlButtonKind.Danger, minHeight = 56.dp, size = HlSize.t14, enabled = s.recordCount > 0)
     }
 }
-
-private fun mib(bytes: Long) = "${bytes / 1024 / 1024} MiB"
 
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {

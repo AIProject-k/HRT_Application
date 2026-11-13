@@ -15,7 +15,7 @@ pharmacokinetic models in the published literature; log a real lab value and it
 **calibrates that curve to your own body**. The more lab values you add, the more
 personalised the curve becomes.
 
-- **Original records stay on the device** — regular logging works offline without an account. Chat uses Kotlin rules and an optionally installed model (Qwen3-0.6B or Gemma 4 E2B) locally; only model installation and a user-tapped update check (Me › 업데이트 확인) use the internet
+- **Original records stay on the device** — regular logging works offline without an account. Chat uses Kotlin rules and an optionally installed model (Qwen3-0.6B or Gemma 4 E2B) locally; only model installation requires internet
 - **Only draws what it can source** — a route gets a curve only when every parameter has provenance; a record it cannot model is left off the curve, and the app says why
 - **Never blends estimates with measurements** — an estimate is a teal band, a measurement a yellow diamond, always
 
@@ -34,6 +34,12 @@ chat input is processed on the device, without an external AI service.
 | :---: | :---: | :---: |
 | **Log a dose** — one tap for a frequent combination, single dose or repeating schedule, injection site | **Log a lab result** — measured E2 / Total T, unit conversion, draw time | **Me** — display, units, body info, schedules, reminders, notes, report, backup |
 
+| <img src="docs/screenshots/gel.png" width="230"> | <img src="docs/screenshots/mpa.png" width="230"> | <img src="docs/screenshots/model.png" width="230"> |
+| :---: | :---: | :---: |
+| **Gel E2 curve** — the projected curve of a daily gel, with the widest range (±60%), calibrated from labs | **Provera (MPA)** — a curve in percent of the peak of one 10 mg tablet. It is not a concentration (ng/mL) | **Model status** — the correction per route, and how far the past predictions were off on average |
+
+All records in the screenshots are made-up examples.
+
 ## Features
 
 - **Optional offline model** — open model management in chat to install the pinned Qwen3-0.6B dynamic INT4 artifact (344,671,744 bytes). Download supports resume, cancel/retry, byte-count and SHA-256 verification, and deletion. Models stay in private no-backup storage, outside APKs and medical backups. Qwen3-0.6B is the default. Gemma 4 E2B (about 2.6 GB) can be chosen on the same screen. Termux, Ubuntu and Claude accounts are not required. Basic queries and explicit single-dose forms work without the model.
@@ -48,9 +54,11 @@ chat input is processed on the device, without an external AI service.
 - **P4 product and meal conditions.** Each dose, schedule, backup, and CSV row keeps the product (Utrogestan, other, or unknown) and the meal condition (fasting, after a regular meal, after a high-fat meal, or unknown). A new record does not reuse an earlier meal condition. These conditions do not change the current estimate yet.
 - **Provera (MPA) records.** Medroxyprogesterone acetate is recorded as an oral dose only. Log it from the dose form, schedules, chat (for example, 방금 프로베라 5mg 먹었어), or CSV. No concentration (ng/mL) is shown, because the sources differ two- to tenfold on it. They agree on the peak time and the half-life, so the MPA tab draws a curve in percent of the peak one 10 mg tablet reaches. A single dose above 20 mg is recorded and not drawn. [Evidence status](docs/evidence/README.md)
 - **Projected flow** — E2 and Total T curves from literature PK/PD parameters
-  - E2: per-ester 3-compartment models (estrannaise.js), oral / sublingual one-compartment models, patch
+  - E2: per-ester 3-compartment models (estrannaise.js), oral / sublingual one-compartment models, patch, gel (one compartment, about 45 pg/mL on average per 1 mg a day)
+  - Estradiol valerate tablets (Progynova) are logged as oral or sublingual and drawn as estradiol, 2 mg counting as 1.53 mg. A schedule made earlier as an estradiol tablet becomes a valerate schedule when the first valerate tablet of the same route and amount is logged
   - Total T: E2 delayed effect compartment + Hill suppression + saturable cyproterone suppression. Using your testes status sharpens it; "prefer not to say" draws no curve
-  - **Per-route calibration from real labs** — injection, oral/sublingual and patch are calibrated separately, the correction is limited to −50%…+100%, and the range narrows as labs accumulate
+  - **Per-route calibration from real labs** — injection, oral/sublingual, patch and gel are calibrated separately, the correction is limited to −50%…+100%, and the range narrows as labs accumulate
+  - **Prediction error** — each lab is compared with the prediction made before it was known, and the model status screen shows how far the predictions were off on average
   - A **model status** screen (labs used and not used, with reasons) and an **evidence explorer** (parameters, sources, limits)
 - **Timeline** — grouped by date, daily medicines folded by month, filters by type / drug / period plus search, edit · duplicate · delete per row
 - **Reminders** — injection days (the evening before and on the day), daily medicines (once more 30 minutes later), lab interval, appointments. **투약 완료** (mark as taken) in the notification records the dose without opening the app, and a locked screen shows only a neutral line
