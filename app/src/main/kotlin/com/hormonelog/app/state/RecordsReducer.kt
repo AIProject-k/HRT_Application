@@ -43,13 +43,19 @@ private fun Route.isInjectionRoute() = this == Route.IM_INJECTION || this == Rou
 /**
  * A tablet schedule made before valerate tablets could be chosen is saved as an estradiol tablet. When a valerate tablet
  * of the same route and amount is first recorded, that schedule becomes a valerate one, so it counts the new records
- * as taken. Nothing changes when a valerate schedule for the route already runs, and no dose record is touched.
+ * as taken. Nothing changes when a valerate schedule for the route already runs, when a valerate tablet of that route
+ * was recorded before (the user kept the schedule on purpose), or when the change itself sets the schedules, as a
+ * backup restore does. No dose record is touched.
  */
 fun followValerateTablets(before: AppState, after: AppState): AppState {
-    val known = before.doses.mapTo(HashSet()) { it.id }
-    val added = after.doses.filter {
-        it.id !in known && it.drug == Drug.ESTRADIOL_VALERATE && !it.route.isInjectionRoute() && it.status.wasTaken
+    if (before.doses === after.doses || before.regimens != after.regimens) return after
+    fun AppState.valerateTablets() = doses.filter {
+        it.drug == Drug.ESTRADIOL_VALERATE && !it.route.isInjectionRoute() && it.status.wasTaken
     }
+    val earlier = before.valerateTablets()
+    val known = earlier.mapTo(HashSet()) { it.id }
+    val routesBefore = earlier.mapTo(HashSet()) { it.route }
+    val added = after.valerateTablets().filter { it.id !in known && it.route !in routesBefore }
     if (added.isEmpty()) return after
     val regimens = after.regimens.map { r ->
         val follows = r.active && r.drug == Drug.ESTRADIOL_TABLET &&

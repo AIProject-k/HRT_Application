@@ -37,6 +37,13 @@ class EverydayChatTest {
         assertTrue(misses.joinToString("\n"), misses.isEmpty())
     }
 
+    @Test fun anHourWordInsideALargerOrRangedNumberIsNotReadAsThatHour() {
+        for (text in listOf("열한 시간 전 에스트라디올 2mg 먹었어", "열두 시간 전 에스트라디올 2mg 먹었어", "두세 시간 전 에스트라디올 2mg 먹었어")) {
+            val times = ChatHarness().send(text).doses.map { ChatHarness.kst(it.occurredAt) }
+            assertTrue("$text -> $times", times.none { it in setOf("2026-10-24 22:00", "2026-10-24 21:00", "2026-10-24 20:00") })
+        }
+    }
+
     @Test fun pillsTakenTogetherAreSavedEachWithItsOwnAmount() {
         for (text in listOf("방금 에스트라디올 2mg, 스피로노락톤 50mg 먹었어", "방금 에스트라디올 2mg이랑 스피로 50mg 먹었어", "30분 전에 에스트라디올 2mg 그리고 스피로노락톤 50mg 복용")) {
             val h = ChatHarness().send(text)

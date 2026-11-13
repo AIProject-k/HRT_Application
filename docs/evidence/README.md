@@ -43,16 +43,17 @@ never uses them for dosing advice.
 | Patch · twice-weekly, once-weekly | 3-compartment `[d, k1, k2, k3]` (dose = µg/day) | `estrannaise` | |
 | Oral E2 | 1-compartment `oralScale / oralKa / oralKe` | `doll2022`, `winston_mcpherson2025` | Fit to 1 mg → Cmax 35 pg/mL @ 8 h; terminal phase extrapolated (only 0–8 h measured). Linear dose-response. |
 | Sublingual E2 | `slScale / slKa / slKe / slSwallowed` (+ oral params for swallowed fraction) | `doll2022` | Fit to 1 mg → Cmax 144 pg/mL @ 1 h; ~40% swallowed → oral tail. Wide uncertainty. |
-| Gel | — none — | | `supports(Route.GEL)` stays false: label-only PK, postmenopausal, high variability. |
+| Gel | 1-compartment `gelScale 34.5 / gelKa 7.2 / gelKe 0.693` (per day) | `maggacis2025_gel`, `fda_divigel_p04003` | About 45 pg/mL average over baseline per 1 mg/day. Widest uncertainty (±60%) and its own calibration group. |
+| Oral / SL estradiol valerate tablet | oral / SL E2 params × `valerateFraction 0.765` | `progynova_fachinfo` | 2 mg EV = 1.53 mg E2. |
 | TT PK/PD (non-route) | baseline/floor, E2 effect-compartment τ=7 d + Hill (Emax 0.97 / EC50 45 / h 2.2), CPA 1-comp + saturating suppression (Emax 0.6) | `ucsf_guidelines`, `winston_mcpherson2025`, `seifert2025_inj_mono`, `wiki_cpa` | Calibrated to Seifert 2025: injectable monotherapy at E2 ~232 pg/mL → median T 17 ng/dL (IQR 10–33), 82.6% < 50. ENIGI: CPA + estrogen → ~15–25 ng/dL, dose-independent 10–100 mg. Model output for EV 10 mg/2wk + CPA 25 mg = T ~11–20 ng/dL. **Limitation:** an effect-site-*average* model cannot capture route-dependent suppression (stable transdermal suppresses better than peaky oral/SL at the same mean E2 — RCT evidence); oral/SL-only T predictions run low. |
 
 The E2 3-compartment rate constants and patch parameters are from the MIT-licensed
 open-source **estrannaise.js** (© 2025 alix, github.com/WHSAH/estrannaise.js). Its
 model form: `C(t) = dose·d·k1·k2·[ Σ eᵏ terms ]`.
 
-## MPA evidence (`MpaEvidence`, bundle `mpa-evidence-2026-10-28.1`)
+## MPA evidence (`MpaEvidence`, bundle `mpa-evidence-2026-11-12.1`)
 
-Defined in `core/evidence/.../MpaEvidence.kt`. The bundle stage is `PK_SUMMARY`, the strongest stage any source reaches. Numbers need `MODEL_VALIDATED` and an enabled model, so the MPA path returns `EVIDENCE_INSUFFICIENT` and draws no curve.
+Defined in `core/evidence/.../MpaEvidence.kt`. The bundle stage is `PK_SUMMARY`, the strongest stage any source reaches. Numbers need `MODEL_VALIDATED` and an enabled model, so no ng/mL value is drawn. The sources agree on the peak time and half-life, so at `PK_SUMMARY` the MPA tab draws a shape in percent of one 10 mg tablet's peak (`MedroxyprogesteroneEvidence.shape`: absorption 1.18/h, elimination 0.0573/h). A single dose above 20 mg is recorded and not drawn.
 
 - The Pfizer table gives 20 women for the single-dose study, with no per-arm split and no sampling times.
 - Single 20 mg arms and the repeated 10 mg arm are never pooled. The registry holds no single 10 mg value.

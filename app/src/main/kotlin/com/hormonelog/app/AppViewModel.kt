@@ -75,7 +75,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     val chatSetup = com.hormonelog.app.chat.LocalChatController(app, viewModelScope) { state }
-    val chat = com.hormonelog.app.chat.ChatSession({ state }, { next, done ->
+    val chat = com.hormonelog.app.chat.ChatSession({ state }, { change, done ->
+        val next = followValerateTablets(state, change)
         state = next
         persistRecords(next, done)
         Reminders.update(app, next)

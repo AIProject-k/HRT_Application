@@ -39,4 +39,13 @@ class RouteChangeTest {
         val both = listOf(plan, daily(start, Drug.ESTRADIOL_VALERATE, Route.ORAL, 2.0, 21 * 60))
         assertEquals(listOf(Drug.ESTRADIOL_TABLET, Drug.ESTRADIOL_VALERATE), after(plans = both))
     }
+
+    @Test fun aScheduleKeptAfterAnEarlierValerateTabletOrSetByTheChangeItselfStays() {
+        val earlier = dose(at(2026, 11, 5), Drug.ESTRADIOL_VALERATE, Route.ORAL, 2.0)
+        val now = dose(at(2026, 11, 13), Drug.ESTRADIOL_VALERATE, Route.ORAL, 2.0)
+        val kept = AppState(regimens = listOf(plan), doses = listOf(earlier))
+        assertEquals(listOf(Drug.ESTRADIOL_TABLET), followValerateTablets(kept, kept.copy(doses = listOf(earlier, now))).regimens.map { it.drug })
+        val restored = AppState().let { followValerateTablets(it, it.copy(regimens = listOf(plan), doses = listOf(now))) }
+        assertEquals(listOf(Drug.ESTRADIOL_TABLET), restored.regimens.map { it.drug })
+    }
 }

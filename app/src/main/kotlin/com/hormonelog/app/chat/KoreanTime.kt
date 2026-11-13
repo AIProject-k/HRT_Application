@@ -65,7 +65,7 @@ internal object KoreanTime {
         val lines = mutableListOf<Pair<String, Int>>()
         inputs.forEachIndexed { index, raw ->
             val line = raw.trim().replace(Regex("밀리그[램람]"), "mg").replace("어젯밤", "어제 밤")
-                .replace(Regex("(한|두|세|네|다섯|여섯)\\s*시간\\s*전")) { "${hourWords.indexOf(it.groupValues[1]) + 1}시간 전" }
+                .replace(Regex("(?<![열한두세네])(한|두|세|네|다섯|여섯)\\s*시간\\s*전")) { "${hourWords.indexOf(it.groupValues[1]) + 1}시간 전" }
             val period = Regex("^(오전|오후)$").matchEntire(line)?.groupValues?.get(1)
             val periodHour = Regex("^(오전|오후)\\s*(\\d{1,2})시(?:\\s*\\d{1,2}분|\\s*반)?$").matchEntire(line)
             val target = when {
